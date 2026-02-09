@@ -36,7 +36,7 @@ The application features intelligent model detection:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/YourUsername/Hard-head-hat-Detection-Computer-Vision.git
+git clone https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision.git
 cd Hard-head-hat-Detection-Computer-Vision
 ```
 
