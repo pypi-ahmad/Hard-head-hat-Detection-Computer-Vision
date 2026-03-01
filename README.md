@@ -329,7 +329,7 @@ python train.py
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/Hard-head-hat-Detection-Computer-Vision.git
+git clone https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision.git
 cd Hard-head-hat-Detection-Computer-Vision
 
 # Create and activate virtual environment
