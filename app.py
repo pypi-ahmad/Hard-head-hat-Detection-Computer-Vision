@@ -1,7 +1,7 @@
 import streamlit as st
 from ultralytics import YOLO
 import cv2
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import numpy as np
 import tempfile
 import os
@@ -32,38 +32,58 @@ COLOR_MAP = {
 }
 
 def get_latest_model_path():
-    """Automatically finds the most recent model"""
-    # PRIORITY 1: Check the deep path you found
+    """Automatically finds the most recent available model."""
+    candidates = []
     deep_path = Path("datasets/safety/results_yolov8n_100e/kaggle/working/runs/detect/train/weights/best.pt")
     if deep_path.exists():
-        return str(deep_path)
-        
-    # PRIORITY 2: Check standard runs/detect
+        candidates.append(deep_path)
+
     base_dir = Path("runs/detect")
     if base_dir.exists():
         try:
-            run_folders = sorted(list(base_dir.glob("safety_model*")), key=os.path.getmtime, reverse=True)
-            for folder in run_folders:
+            for folder in base_dir.glob("safety_model*"):
                 weights_path = folder / "weights" / "best.pt"
                 if weights_path.exists():
-                    return str(weights_path)
-        except Exception:
-            pass
+                    candidates.append(weights_path)
+        except OSError as exc:
+            st.sidebar.warning(f"Model discovery warning: {exc}")
+
+    if candidates:
+        latest = max(candidates, key=lambda path: path.stat().st_mtime)
+        return str(latest)
     return None
 
 def load_model(model_name, custom_path):
+    fallback_model = 'yolov8n.pt'
+
     if model_name == 'Custom Trained Model':
         if custom_path and os.path.exists(custom_path):
-            return YOLO(custom_path), True
+            try:
+                return YOLO(custom_path), True
+            except Exception as exc:
+                st.sidebar.error(f"Custom model failed to load: {exc}")
         else:
             st.sidebar.error(f"Custom model not found at {custom_path}")
-            return YOLO('yolov8n.pt'), False
+        try:
+            return YOLO(fallback_model), False
+        except Exception as exc:
+            st.sidebar.error(f"Fallback model failed to load: {exc}")
+            return None, False
     
     model_map = {
-        'YOLO26 Nano': 'yolov8n.pt',
-        'YOLO26 Large': 'yolov8l.pt'
+        'YOLO26 Nano': 'yolo26n.pt',
+        'YOLO26 Large': 'yolo26l.pt'
     }
-    return YOLO(model_map.get(model_name, 'yolov8n.pt')), False
+    selected_path = model_map.get(model_name, fallback_model)
+    try:
+        return YOLO(selected_path), False
+    except Exception as exc:
+        st.sidebar.error(f"Model load failed for {selected_path}: {exc}")
+        try:
+            return YOLO(fallback_model), False
+        except Exception as fallback_exc:
+            st.sidebar.error(f"Fallback model failed to load: {fallback_exc}")
+            return None, False
 
 def format_reasons(reasons_list):
     if not reasons_list:
@@ -72,6 +92,13 @@ def format_reasons(reasons_list):
     return ", ".join([f"{k} ({v})" for k, v in counts.items()])
 
 def draw_safety_box(image, result, conf_threshold, is_custom):
+    if image is None:
+        raise ValueError("Input image cannot be None")
+    if result is None:
+        raise ValueError("Inference result cannot be None")
+
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
     img_cv = np.array(image)
     img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2BGR)
     
@@ -88,7 +115,7 @@ def draw_safety_box(image, result, conf_threshold, is_custom):
                 continue
                 
             cls_id = int(box.cls[0])
-            cls_name = names[cls_id]
+            cls_name = names.get(cls_id, str(cls_id))
             
             # --- Logic Split ---
             if not is_custom:
@@ -123,21 +150,21 @@ def main():
     st.sidebar.header("Model Settings")
     latest_custom_model = get_latest_model_path()
     model_options = ['YOLO26 Nano', 'YOLO26 Large']
-    default_ix = 0
     
     if latest_custom_model:
         model_options.insert(0, 'Custom Trained Model')
         st.sidebar.success(f"Model Loaded!")
-        default_ix = 0
     else:
         st.sidebar.warning("No custom model found.")
-        default_ix = 0
 
-    selected_model = st.sidebar.selectbox("Select Model", model_options, index=default_ix)
+    selected_model = st.sidebar.selectbox("Select Model", model_options, index=0)
     confidence = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.4)
     
     # Load Model
     model, is_custom = load_model(selected_model, latest_custom_model)
+    if model is None:
+        st.error("No usable model could be loaded. Check model files and retry.")
+        return
     
     if not is_custom:
         st.warning("⚠️ Using Standard Model. Only 'Person' detection available.")
@@ -148,12 +175,22 @@ def main():
     if input_type == "Image":
         uploaded_file = st.file_uploader("Upload Image", type=['jpg', 'png', 'jpeg'])
         if uploaded_file:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+            try:
+                image = Image.open(uploaded_file)
+            except (UnidentifiedImageError, OSError):
+                st.error("Uploaded file is not a valid image.")
+                return
+
+            st.image(image, caption="Uploaded Image", use_container_width=True)
             if st.button("Analyze Safety"):
-                results = model(image)
-                annotated_img, v_reasons, s_reasons = draw_safety_box(image, results[0], confidence, is_custom)
-                st.image(annotated_img, caption="Result", use_column_width=True)
+                try:
+                    results = model(image)
+                    annotated_img, v_reasons, s_reasons = draw_safety_box(image, results[0], confidence, is_custom)
+                except Exception as exc:
+                    st.error(f"Inference failed: {exc}")
+                    return
+
+                st.image(annotated_img, caption="Result", use_container_width=True)
                 
                 col1, col2 = st.columns(2)
                 col1.metric("Violations 🛑", len(v_reasons))
@@ -164,9 +201,15 @@ def main():
     elif input_type == "Video":
         uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
         if uploaded_file:
-            tfile = tempfile.NamedTemporaryFile(delete=False)
-            tfile.write(uploaded_file.read())
-            vf = cv2.VideoCapture(tfile.name)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
+                tfile.write(uploaded_file.read())
+                video_path = tfile.name
+
+            vf = cv2.VideoCapture(video_path)
+            if not vf.isOpened():
+                st.error("Unable to open uploaded video file.")
+                Path(video_path).unlink(missing_ok=True)
+                return
             
             # --- Video Controls ---
             col_ctrl1, col_ctrl2 = st.columns([1, 2])
@@ -179,35 +222,39 @@ def main():
 
             stframe = st.empty()
             metric_ph = st.empty()
+            frame_skip_accumulator = 0.0
             
-            while vf.isOpened() and run_video:
-                # Speed Logic: Skip frames if speed > 1
-                if speed > 1:
-                    for _ in range(int(speed) - 1):
-                        vf.read() # Skip frames
-                
-                ret, frame = vf.read()
-                if not ret: break
-                
-                # Inference
-                frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                results = model(frame_pil)
-                annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
-                stframe.image(annotated_frame)
-                
-                # Metrics
-                with metric_ph.container():
-                     col1, col2 = st.columns(2)
-                     col1.metric("Violations", len(v_reasons))
-                     if v_reasons: col1.error(format_reasons(v_reasons))
-                     col2.metric("Safe", len(s_reasons))
-                     if s_reasons: col2.success(format_reasons(s_reasons))
-                
-                # Speed Logic: Sleep if speed < 1
-                if speed < 1.0:
-                    time.sleep(0.1 * (1/speed)) # Add delay for slow mo
+            try:
+                while vf.isOpened() and run_video:
+                    if speed > 1.0:
+                        frame_skip_accumulator += speed - 1.0
+                        while frame_skip_accumulator >= 1.0:
+                            skipped_ret, _ = vf.read()
+                            if not skipped_ret:
+                                break
+                            frame_skip_accumulator -= 1.0
 
-            vf.release()
+                    ret, frame = vf.read()
+                    if not ret:
+                        break
+
+                    frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    results = model(frame_pil)
+                    annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
+                    stframe.image(annotated_frame)
+
+                    with metric_ph.container():
+                         col1, col2 = st.columns(2)
+                         col1.metric("Violations", len(v_reasons))
+                         if v_reasons: col1.error(format_reasons(v_reasons))
+                         col2.metric("Safe", len(s_reasons))
+                         if s_reasons: col2.success(format_reasons(s_reasons))
+
+                    if speed < 1.0:
+                        time.sleep(0.1 * (1 / speed))
+            finally:
+                vf.release()
+                Path(video_path).unlink(missing_ok=True)
 
     elif input_type == "Webcam":
         run_cam = st.checkbox("Start Webcam")
@@ -215,19 +262,22 @@ def main():
             cam = cv2.VideoCapture(0)
             stframe = st.empty()
             metric_ph = st.empty()
-            while run_cam:
-                ret, frame = cam.read()
-                if not ret: break
-                frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                results = model(frame_pil)
-                annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
-                stframe.image(annotated_frame)
-                
-                with metric_ph.container():
-                     col1, col2 = st.columns(2)
-                     col1.metric("Violations", len(v_reasons))
-                     col2.metric("Safe", len(s_reasons))
-            cam.release()
+            try:
+                while cam.isOpened():
+                    ret, frame = cam.read()
+                    if not ret:
+                        break
+                    frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    results = model(frame_pil)
+                    annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
+                    stframe.image(annotated_frame)
+
+                    with metric_ph.container():
+                         col1, col2 = st.columns(2)
+                         col1.metric("Violations", len(v_reasons))
+                         col2.metric("Safe", len(s_reasons))
+            finally:
+                cam.release()
 
 if __name__ == "__main__":
     main()

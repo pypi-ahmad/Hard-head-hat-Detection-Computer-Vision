@@ -10,7 +10,7 @@ names:
 - machinery
 - vehicle
 nc: 10
-path: D:\Workspace\Github\Hard-head-hat-Detection-Computer-Vision\datasets\safety
+path: .
 test: css-data/test/images
 train: css-data/train/images
 val: css-data/valid/images

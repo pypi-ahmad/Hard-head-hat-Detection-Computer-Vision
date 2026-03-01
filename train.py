@@ -1,5 +1,4 @@
 from ultralytics import YOLO
-import sys
 from pathlib import Path
 import torch
 
@@ -12,6 +11,10 @@ def train_safety_model():
     run_name = "safety_model"
     
     print(f"Starting training with {model_name} on {data_path}...")
+
+    if not data_path.exists():
+        print(f"Error: dataset config not found at {data_path}")
+        return {"ok": False, "error": "missing_data_yaml"}
     
     # Check GPU
     if torch.cuda.is_available():
@@ -25,24 +28,30 @@ def train_safety_model():
         model = YOLO(model_name)
     except Exception as e:
         print(f"Error loading {model_name}: {e}")
-        return
+        return {"ok": False, "error": "model_load_failed"}
 
     # Train
-    results = model.train(
-        data=str(data_path),
-        epochs=50,
-        imgsz=640,
-        batch=8,           # <--- CRITICAL: Keeps memory usage low for 8GB GPU
-        device=device,     # <--- Forces GPU usage
-        workers=2,         # <--- Reduces CPU overhead
-        project=project_dir,
-        name=run_name,
-        save=True,
-        plots=True
-    )
+    try:
+        model.train(
+            data=str(data_path),
+            epochs=50,
+            imgsz=640,
+            batch=8,
+            device=device,
+            workers=2,
+            project=project_dir,
+            name=run_name,
+            save=True,
+            plots=True
+        )
+    except Exception as e:
+        print(f"Training failed: {e}")
+        return {"ok": False, "error": "train_failed"}
     
     # Output best model path
-    print(f"\nTraining Complete. Check runs/detect/ for the latest safety_model folder.")
+    best_model_path = Path(project_dir) / run_name / "weights" / "best.pt"
+    print(f"\nTraining Complete. Best model: {best_model_path}")
+    return {"ok": True, "best_model": str(best_model_path), "device": device}
 
 if __name__ == "__main__":
     train_safety_model()

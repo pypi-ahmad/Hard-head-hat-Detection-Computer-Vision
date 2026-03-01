@@ -1,5 +1,4 @@
 import os
-import zipfile
 from pathlib import Path
 import yaml
 import kaggle
@@ -30,9 +29,30 @@ def find_folder(root_dir, folder_name):
             return path
     return None
 
+def find_split_folder(root_dir, split_names):
+    """Find split folder containing both images/ and labels/ directories."""
+    if not root_dir.exists():
+        return None
+
+    candidates = []
+    for split_name in split_names:
+        for path in root_dir.rglob(split_name):
+            if path.is_dir() and (path / "images").exists() and (path / "labels").exists():
+                candidates.append(path)
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: (len(item.parts), str(item)))
+    return candidates[0]
+
 def setup_data():
-    # 1. Download if 'train' folder doesn't exist anywhere
-    train_dir = find_folder(DATASET_DIR, "train")
+    # 1. Download if train split doesn't exist
+    train_dir = find_split_folder(DATASET_DIR, ("train",))
+    malformed_train_dir = find_folder(DATASET_DIR, "train")
+    if malformed_train_dir and not train_dir:
+        print(f"Error: train split must contain both images/ and labels/: {malformed_train_dir}")
+        return
     
     if not train_dir:
         print(f"Dataset not found. Downloading {DATASET_NAME}...")
@@ -41,15 +61,14 @@ def setup_data():
             kaggle.api.authenticate()
             kaggle.api.dataset_download_files(DATASET_NAME, path=DATASET_DIR, unzip=True)
             print("Download and extraction complete.")
-            # Search again
-            train_dir = find_folder(DATASET_DIR, "train")
+            train_dir = find_split_folder(DATASET_DIR, ("train",))
         except Exception as e:
             print(f"Error downloading dataset: {e}")
             print("Please ensure KAGGLE_API_TOKEN is set or kaggle.json is present.")
             return
 
     if not train_dir:
-        print("Error: 'train' folder not found after download.")
+        print("Error: train split with images/labels not found after download.")
         return
 
     # 2. Determine paths relative to DATASET_DIR
@@ -58,38 +77,32 @@ def setup_data():
     except ValueError:
         relative_root = Path(".")
     
-    # Check if 'images' is inside 'train'
-    if not (train_dir / "images").exists():
-        print(f"Error: 'images' folder not found in {train_dir}")
+    if not (train_dir / "images").exists() or not (train_dir / "labels").exists():
+        print(f"Error: train split is incomplete in {train_dir}")
         return
 
     train_rel = relative_root / "train" / "images"
-    val_rel = relative_root / "valid" / "images"
-    test_rel = relative_root / "test" / "images"
+    val_dir = find_split_folder(DATASET_DIR, ("valid", "val"))
+    test_dir = find_split_folder(DATASET_DIR, ("test",))
 
-    # Verify valid exists
-    if not (DATASET_DIR / val_rel).exists():
-        val_dir = find_folder(DATASET_DIR, "valid") or find_folder(DATASET_DIR, "val")
-        if val_dir:
-             try:
-                val_rel = val_dir.relative_to(DATASET_DIR) / "images"
-             except ValueError:
-                 print(f"Warning: Validation dir {val_dir} is not relative to {DATASET_DIR}")
-        else:
-             print("Warning: Validation set not found. Using train for validation.")
-             val_rel = train_rel
+    if not val_dir:
+        print("Error: validation split with images/labels not found.")
+        return
 
-    # Verify test exists
-    if not (DATASET_DIR / test_rel).exists():
-        test_dir = find_folder(DATASET_DIR, "test")
-        if test_dir:
-             test_rel = test_dir.relative_to(DATASET_DIR) / "images"
-        else:
-             test_rel = val_rel 
+    if not test_dir:
+        print("Error: test split with images/labels not found.")
+        return
+
+    try:
+        val_rel = val_dir.relative_to(DATASET_DIR) / "images"
+        test_rel = test_dir.relative_to(DATASET_DIR) / "images"
+    except ValueError:
+        print("Error: split directories must be inside DATASET_DIR.")
+        return
 
     # Yaml content
     yaml_data = {
-        'path': str(DATASET_DIR.absolute()),
+        'path': '.',
         'train': str(train_rel).replace(os.sep, '/'),
         'val': str(val_rel).replace(os.sep, '/'),
         'test': str(test_rel).replace(os.sep, '/'),
@@ -98,7 +111,7 @@ def setup_data():
     }
     
     yaml_path = DATASET_DIR / "data.yaml"
-    with open(yaml_path, 'w') as f:
+    with open(yaml_path, 'w', encoding='utf-8') as f:
         yaml.dump(yaml_data, f, default_flow_style=False)
     
     print(f"Created/Updated data.yaml at {yaml_path}")
