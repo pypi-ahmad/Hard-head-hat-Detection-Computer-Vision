@@ -470,3 +470,5 @@ The following constraints are derived from the current implementation:
 This project is licensed under the [Mozilla Public License 2.0](LICENSE).
 
 Dataset: [Construction Site Safety (Roboflow)](https://universe.roboflow.com/roboflow-universe-projects/construction-site-safety) — CC BY 4.0.
+
+<p align="center">Made with ❤️ by Ahmad Mujtaba</p>
