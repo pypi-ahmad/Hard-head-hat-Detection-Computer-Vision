@@ -8,6 +8,28 @@ from datetime import UTC, datetime
 import streamlit as st
 
 from safety.cctv import RUNTIME, read_status, runtime_path
+from safety.pc_camera import PcCameraSession, camera_controls
+
+
+@st.cache_resource(scope="session", on_release=lambda session: session.close())
+def pc_camera_session():
+    return PcCameraSession()
+
+
+@st.cache_resource(max_entries=2)
+def pc_camera_detector(identity, resolution):
+    from safety.inference import Detector
+
+    return Detector(identity[0], imgsz=resolution)
+
+
+def selected_pc_detector():
+    from safety.inference import checkpoint_identity, selected_checkpoint, selected_resolution
+
+    checkpoint, _ = selected_checkpoint("shwd")
+    if checkpoint is None:
+        raise ValueError("A selected SHWD checkpoint is required")
+    return pc_camera_detector(checkpoint_identity(checkpoint), selected_resolution("shwd"))
 
 
 @st.fragment(run_every=1)
@@ -103,9 +125,15 @@ def main(root=RUNTIME):
     st.set_page_config(page_title="Helmet CCTV", page_icon=":material/videocam:", layout="wide")
     st.title("Helmet CCTV")
     st.caption("Continuous helmet and bare-head monitoring. Counts describe detections in the latest frame.")
-    page = st.sidebar.radio("Workspace", ["Live cameras", "Recorded events", "System"])
+    page = st.sidebar.radio("Workspace", ["Live cameras", "PC camera", "Recorded events", "System"])
+    session = pc_camera_session()
+    if page != "PC camera":
+        session.close()
     if page == "Live cameras":
         live_view(root)
+    elif page == "PC camera":
+        camera_controls(session, selected_pc_detector, 0.12)
+        st.caption("Detection preview only. Configure network feeds for continuous event monitoring.")
     elif page == "Recorded events":
         event_view(root)
     else:

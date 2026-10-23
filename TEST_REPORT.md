@@ -1,5 +1,14 @@
 # Verification report
 
+## Attached-PC camera follow-up
+
+DirectShow enumeration on the development Windows PC found two devices:
+USB2.0 HD UVC WebCam and Camera (NVIDIA Broadcast). Listing devices does not open
+capture. Ruff and Python syntax checks passed for the changed app modules.
+Live capture, switching devices, unplug/reconnect, and browser controls for this
+new feature have not been exercised. Earlier webcam and release checks below
+predate this implementation and do not verify these new controls.
+
 ## CCTV installation release 0.2.0 — 23 October 2026
 
 - Full suite: 106 tests passed after adding CCTV configuration, worker lifecycle,

@@ -56,6 +56,8 @@ cuda-pathfinder==1.8.3 ; sys_platform == 'linux'
     # via cuda-bindings
 cuda-toolkit==13.2.2 ; sys_platform == 'linux'
     # via torch
+cv2-enumerate-cameras==1.4.0
+    # via ppe-detection
 cycler==0.12.1
     # via matplotlib
 dnspython==2.9.0
@@ -234,6 +236,27 @@ pyee==15.0.0
     # via aiortc
 pylibsrtp==1.0.0
     # via aiortc
+pyobjc-core==12.2.2 ; sys_platform == 'darwin'
+    # via
+    #   pyobjc-framework-avfoundation
+    #   pyobjc-framework-cocoa
+    #   pyobjc-framework-coreaudio
+    #   pyobjc-framework-coremedia
+    #   pyobjc-framework-quartz
+pyobjc-framework-avfoundation==12.2.2 ; sys_platform == 'darwin'
+    # via cv2-enumerate-cameras
+pyobjc-framework-cocoa==12.2.2 ; sys_platform == 'darwin'
+    # via
+    #   pyobjc-framework-avfoundation
+    #   pyobjc-framework-coreaudio
+    #   pyobjc-framework-coremedia
+    #   pyobjc-framework-quartz
+pyobjc-framework-coreaudio==12.2.2 ; sys_platform == 'darwin'
+    # via pyobjc-framework-avfoundation
+pyobjc-framework-coremedia==12.2.2 ; sys_platform == 'darwin'
+    # via pyobjc-framework-avfoundation
+pyobjc-framework-quartz==12.2.2 ; sys_platform == 'darwin'
+    # via pyobjc-framework-avfoundation
 pyopenssl==26.4.0
     # via aiortc
 pyparsing==3.3.3

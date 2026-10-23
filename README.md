@@ -72,6 +72,9 @@ dataset is included in the supported workflow.
 - **Image:** upload JPG/PNG and select Analyze image.
 - **Video:** upload MP4/AVI/MOV; Start, pause/resume, stop, and adjust playback speed.
 - **Browser camera:** allow camera access. Remote use requires HTTPS and may need TURN.
+- **PC camera:** choose an attached camera from the dropdown, then select Start PC camera.
+  Refresh cameras after connecting or removing a device. Stop releases the camera.
+  This lists devices on the app PC; Browser camera uses the visiting device instead.
 - **Video link:** download a public YouTube or direct video, then Start.
 
 Confidence defaults to **0.12**, favoring bare-head recall. Detection counts are
@@ -86,6 +89,12 @@ and pausing do not change event timing. Track IDs apply only to one stream.
 
 Local event images and JSON live under `artifacts/events/`. Download JSON/CSV from
 the app. Changing source, model, threshold, or area starts new stream state.
+
+The CCTV dashboard also has a **PC camera** workspace for a session-based detection
+preview, including USB and virtual cameras. It stops when leaving that workspace
+or after browser inactivity. Use configured network feeds for continuous monitoring.
+This feature is on the development branch after v0.2.0; the existing release ZIP
+does not include it.
 
 Downloads are capped at 1,000 MB. YouTube uses up to 720p and may require Node.js;
 upstream bot/sign-in restrictions can prevent downloads. Private network URLs,

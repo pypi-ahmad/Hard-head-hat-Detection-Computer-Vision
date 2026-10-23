@@ -77,6 +77,23 @@ uv run python cctv.py --probe
 
 ## LAN access
 
+### Attached PC cameras (after v0.2.0)
+
+The current source has a **PC camera** workspace. Choose a detected device by name,
+then select **Start PC camera**. **Refresh cameras** rescans after devices change;
+**Stop PC camera** releases capture. USB webcams and virtual camera drivers can
+appear. Unavailable or disconnected devices report an error; close other camera
+apps and retry. Windows must allow desktop apps to access the camera.
+
+The dropdown lists cameras attached to the server PC even when using a LAN browser.
+For a camera attached to the visiting device, use **Browser camera** in `app.py`.
+The PC-camera workspace is a session-based detection preview, with cleanup on
+workspace exit or browser inactivity; it is separate from persistent configured
+RTSP/HTTP feeds and does not record CCTV events. The published v0.2.0 ZIP predates
+this feature. Use the updated source until a newer app package is released.
+
+### Connect from the LAN
+
 Open `Start.cmd` or the **Helmet CCTV** desktop shortcut. Read your HTTPS address
 from `config/lan.local.json`, for example `https://cctv-pc:8443`.
 The gateway authenticates all requests and proxies to Streamlit on `127.0.0.1:8503`.

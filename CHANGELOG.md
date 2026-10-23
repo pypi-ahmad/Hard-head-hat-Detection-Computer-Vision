@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- Attached-PC camera enumeration and a named dropdown in both app interfaces.
+- Refresh, Start, and Stop controls, disconnected-camera errors, and session cleanup.
+- Separate PC-camera previews from browser cameras and persistent CCTV feeds.
+
 ### Documentation
 
 - Added direct app downloads, published checksum, and source-versus-app guidance.

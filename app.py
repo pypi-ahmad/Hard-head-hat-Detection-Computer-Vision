@@ -18,6 +18,7 @@ from safety.inference import (
     selected_resolution,
 )
 from safety.media import DownloadJob, VideoSession, save_upload
+from safety.pc_camera import PcCameraSession, camera_controls
 from safety.profiles import PROFILES
 
 
@@ -70,10 +71,12 @@ class MediaResources:
         self.video = VideoSession()
         self.download = None
         self.camera = None
+        self.pc_camera = PcCameraSession()
         self.key = None
 
     def close(self):
         self.video.close()
+        self.pc_camera.close()
         if self.download:
             self.download.close()
             self.download = None
@@ -224,7 +227,8 @@ def main():
         st.subheader("CCTV monitor")
         live_view(RUNTIME)
         return
-    source = st.radio("Input", ["Image", "Video", "Browser camera", "Video link"], horizontal=True)
+    source = st.radio("Input", ["Image", "Video", "PC camera", "Browser camera", "Video link"],
+                      horizontal=True)
     zone = None
     if profile == "shwd" and source != "Image" and page == "Detection":
         required = st.sidebar.checkbox("Helmet-required area")
@@ -313,6 +317,8 @@ def main():
             st.session_state.upload_key = upload_key
         if uploaded:
             video_controls(resources, detector, confidence, uploaded)
+    elif source == "PC camera":
+        camera_controls(resources.pc_camera, lambda: detector, confidence)
     elif source == "Video link":
         url = st.text_input("Public YouTube or direct video URL", placeholder="https://...")
         st.caption("Prerecorded videos only, up to 1,000 MB. YouTube downloads use up to 720p.")
