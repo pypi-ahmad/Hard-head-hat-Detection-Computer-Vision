@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-23",
+  "scope": "SHWD overhaul and CCTV installation release v0.2.0",
+  "cctv_rtsp": "two_local_server_feeds_and_reconnect_passed",
+  "lan_https": "local_tls_authentication_and_browser_passed",
+  "camera_training": "in_progress",
+  "approved_camera_frames": 154,
+  "reviewed_event_intervals": "pending",
+  "physical_webcam_webrtc": "passed_local_headed_chromium",
+  "physical_dataset_removal": "complete"
+}

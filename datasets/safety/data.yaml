@@ -10,7 +10,6 @@ names:
 - machinery
 - vehicle
 nc: 10
-path: .
 test: css-data/test/images
 train: css-data/train/images
 val: css-data/valid/images

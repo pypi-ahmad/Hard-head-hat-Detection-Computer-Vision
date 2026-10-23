@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import yaml
 
@@ -36,7 +35,7 @@ def test_setup_data_writes_yaml_for_existing_dataset(tmp_path, monkeypatch):
     assert yaml_path.exists()
 
     data = yaml.safe_load(yaml_path.read_text())
-    assert data["path"] == "."
+    assert "path" not in data
     assert data["train"] == "css-data/train/images"
     assert data["val"] == "css-data/valid/images"
     assert data["test"] == "css-data/test/images"

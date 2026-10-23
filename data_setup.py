@@ -1,24 +1,16 @@
+import argparse
 import os
 from pathlib import Path
+
 import yaml
-import kaggle
+
+from safety.annotations import CLASSES
+from safety.paths import DATASET
 
 # Configuration
 DATASET_NAME = "snehilsanyal/construction-site-safety-image-dataset-roboflow"
-DATASET_DIR = Path("datasets/safety")
+DATASET_DIR = DATASET
 
-CLASSES = [
-    'Hardhat', 
-    'Mask', 
-    'NO-Hardhat', 
-    'NO-Mask', 
-    'NO-Safety Vest', 
-    'Person', 
-    'Safety Cone', 
-    'Safety Vest', 
-    'machinery', 
-    'vehicle'
-]
 
 def find_folder(root_dir, folder_name):
     """Recursively search for a folder."""
@@ -58,6 +50,8 @@ def setup_data():
         print(f"Dataset not found. Downloading {DATASET_NAME}...")
         DATASET_DIR.mkdir(parents=True, exist_ok=True)
         try:
+            import kaggle
+
             kaggle.api.authenticate()
             kaggle.api.dataset_download_files(DATASET_NAME, path=DATASET_DIR, unzip=True)
             print("Download and extraction complete.")
@@ -102,7 +96,6 @@ def setup_data():
 
     # Yaml content
     yaml_data = {
-        'path': '.',
         'train': str(train_rel).replace(os.sep, '/'),
         'val': str(val_rel).replace(os.sep, '/'),
         'test': str(test_rel).replace(os.sep, '/'),
@@ -117,6 +110,18 @@ def setup_data():
     print(f"Created/Updated data.yaml at {yaml_path}")
     print(f"Train path: {yaml_data['train']}")
     print("Data setup complete.")
+    return yaml_path.resolve()
 
 if __name__ == "__main__":
-    setup_data()
+    parser = argparse.ArgumentParser(description="Download and prepare a supported detection dataset")
+    parser.add_argument("--profile", choices=["shwd", "ppe"], default="shwd")
+    parser.add_argument("--prepare-only", action="store_true", help="Convert already downloaded raw files")
+    args = parser.parse_args()
+    if args.profile == "ppe":
+        raise SystemExit(0 if setup_data() else 1)
+    from safety.datasets import download, prepare
+
+    for profile in [args.profile]:
+        if not args.prepare_only:
+            download(profile)
+        print(prepare(profile), flush=True)

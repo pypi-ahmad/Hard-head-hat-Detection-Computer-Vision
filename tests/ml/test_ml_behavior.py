@@ -1,12 +1,7 @@
 import numpy as np
 from PIL import Image
 
-import app
-
-
-class FakeYOLO:
-    def __init__(self, model_path):
-        self.model_path = model_path
+from safety import annotations as app
 
 
 class FakeBox:
@@ -21,15 +16,6 @@ class FakeResult:
         self.boxes = boxes
         self.names = names
 
-
-def test_model_loads_with_expected_path_for_non_custom(monkeypatch):
-    monkeypatch.setattr(app, "YOLO", FakeYOLO)
-
-    model, is_custom = app.load_model("YOLO26 Nano", custom_path=None)
-
-    assert isinstance(model, FakeYOLO)
-    assert model.model_path == "yolo26n.pt"
-    assert is_custom is False
 
 
 def test_prediction_output_type_and_shape_for_valid_result():
@@ -48,28 +34,6 @@ def test_prediction_output_type_and_shape_for_valid_result():
     assert isinstance(safe, list)
 
 
-def test_missing_custom_model_falls_back_to_default(fake_streamlit, monkeypatch):
-    monkeypatch.setattr(app, "st", fake_streamlit)
-    monkeypatch.setattr(app, "YOLO", FakeYOLO)
-
-    model, is_custom = app.load_model("Custom Trained Model", custom_path="not_found.pt")
-
-    assert model.model_path == "yolov8n.pt"
-    assert is_custom is False
-
-
-def test_corrupted_model_load_returns_none_when_fallback_also_fails(fake_streamlit, monkeypatch):
-    class BrokenYOLO:
-        def __init__(self, _):
-            raise RuntimeError("corrupted")
-
-    monkeypatch.setattr(app, "st", fake_streamlit)
-    monkeypatch.setattr(app, "YOLO", BrokenYOLO)
-
-    model, is_custom = app.load_model("YOLO26 Nano", custom_path=None)
-    assert model is None
-    assert is_custom is False
-    assert fake_streamlit.sidebar.errors
 
 
 def test_empty_detection_list_returns_empty_reason_lists():

@@ -1,12 +1,22 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## CCTV installations
 
-Security fixes are applied to the default branch and recent actively maintained updates.
+The supported LAN setup uses a Caddy HTTPS gateway with hashed-password login;
+Streamlit stays on `127.0.0.1:8503`. Camera URLs come from the server environment.
+Keep `config/*.local*`, `.streamlit/secrets.toml`, recordings, and private PKI keys
+outside Git and shared release archives. Trust the local CA only after checking
+its fingerprint with the installation administrator. Firewall guidance is in
+[CCTV_INSTALL.md](docs/CCTV_INSTALL.md).
 
-## Reporting a Vulnerability
+## Supported versions
 
-Please report potential vulnerabilities through GitHub Issues in this repository.
+Maintainers apply security fixes to the default branch and recent updates that are
+still maintained.
+
+## Reporting a vulnerability
+
+Report potential vulnerabilities through GitHub Issues in this repository.
 
 When reporting, include:
 
@@ -18,7 +28,7 @@ When reporting, include:
 Avoid posting exploit details that could put users at risk. Maintainers may request
 additional details privately through GitHub as needed.
 
-## Response Process
+## Response process
 
-Maintainers will triage reports, assess severity, and communicate remediation status
-through issue updates and release/change notes when fixes are available.
+Maintainers review reports and assess their severity. They share progress through
+issue updates and release/change notes when fixes are available.

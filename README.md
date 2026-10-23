@@ -1,474 +1,149 @@
-# Hard Head Hat Detection — Computer Vision
+# Helmet and bare-head detection
 
-Real-time Personal Protective Equipment (PPE) compliance detection system built with YOLO and Streamlit. Detects hardhats, masks, safety vests, and their absence across images, video files, and live webcam feeds.
+Detect helmets and bare heads in images, uploaded video, browser camera frames,
+and public prerecorded video links. SHWD YOLO26 Small is the default. The original
+ten-class construction PPE workflow remains an explicit experimental mode.
 
-## Table of Contents
+## Install as a CCTV monitor
 
-- [Project Overview](#project-overview)
-- [Architecture Overview](#architecture-overview)
-- [System Flow](#system-flow)
-- [Core Modules](#core-modules)
-- [Detection Classes](#detection-classes)
-- [Model Discovery and Fallback Chain](#model-discovery-and-fallback-chain)
-- [Input Validation and Safety](#input-validation-and-safety)
-- [Dataset Setup](#dataset-setup)
-- [Training Pipeline](#training-pipeline)
-- [Quickstart](#quickstart)
-- [Running the Application](#running-the-application)
-- [Testing](#testing)
-- [Project Structure](#project-structure)
-- [Limitations](#limitations)
-- [License](#license)
+The [v0.2.0 Windows app package](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision/releases/tag/v0.2.0)
+includes the trained SHWD model, `Install.cmd`, `Start.cmd`, and an authenticated
+HTTPS gateway for LAN access. Extract it into a permanent folder, run `Install.cmd`,
+then configure cameras using the [installation guide](docs/CCTV_INSTALL.md).
+The first install downloads Python and locked dependencies. GitHub's source ZIP
+does not include the trained model.
 
----
+The CCTV worker accepts multiple RTSP/HTTP(S) camera streams, reconnects automatically,
+and runs while the browser is closed. The dark dashboard shows per-camera status,
+latest detections, FPS, latency, and recorded events. Optional Windows logon startup
+uses Task Scheduler. Closed event sessions have age and storage retention limits.
+Camera URLs stay in the server account's environment; they are not sent to clients.
 
-## Project Overview
-
-This system performs construction site safety compliance analysis by detecting whether workers are wearing required PPE. It classifies 10 object classes into three safety categories and presents per-frame violation/compliance counts through a Streamlit web interface.
-
-**Key capabilities (from code):**
-
-- Single-image upload analysis with annotated bounding box output
-- Video file processing with playback speed control (0.25x–2.0x)
-- Live webcam inference with real-time annotation
-- Automatic model discovery selecting the newest trained weights by modification time
-- Three-tier model fallback: custom trained → selected preset → `yolov8n.pt`
-- Configurable confidence threshold via sidebar slider (0.0–1.0, default 0.4)
-- Input image mode normalization (grayscale and RGBA automatically converted to RGB)
-
----
-
-## Architecture Overview
-
-The system consists of three standalone Python modules with no shared state between them:
-
-| Module | Role | Entry Point |
-|---|---|---|
-| `app.py` | Streamlit inference UI — handles all user interaction, model loading, and visualization | `streamlit run app.py` |
-| `train.py` | Training pipeline — fine-tunes a YOLO model on the dataset | `python train.py` |
-| `data_setup.py` | Dataset preparation — downloads from Kaggle if needed, validates split structure, generates `data.yaml` | `python data_setup.py` |
-
-Supporting configuration:
-
-| File | Purpose |
-|---|---|
-| `.streamlit/config.toml` | Sets `maxUploadSize = 1000` (MB) for video uploads |
-| `datasets/safety/data.yaml` | YOLO dataset config with relative paths, 10 classes |
-| `requirements.txt` | All direct dependencies (9 packages) |
-
----
-
-## System Flow
-
-### Image Inference
-
-```mermaid
-flowchart TD
-    A[User opens Streamlit UI] --> B[Sidebar: select model + confidence]
-    B --> C{Custom trained model found?}
-    C -- Yes --> D[Add 'Custom Trained Model' to options]
-    C -- No --> E[Show YOLO26 Nano / YOLO26 Large only]
-    D --> F[load_model]
-    E --> F
-    F --> G{Model loaded?}
-    G -- No: primary + fallback failed --> H[Display error, stop]
-    G -- Yes --> I[User selects input type]
-    I -- Image --> J[Upload JPG/PNG/JPEG]
-    J --> K[PIL.Image.open with error handling]
-    K --> L[Click 'Analyze Safety']
-    L --> M[YOLO inference]
-    M --> N[draw_safety_box]
-    N --> N1[Convert to RGB if grayscale/RGBA]
-    N1 --> N2[Iterate boxes above confidence threshold]
-    N2 --> N3[Classify each detection: safe / danger / neutral]
-    N3 --> O[Draw colored bounding boxes + labels]
-    O --> P[Return annotated image + violation list + safe list]
-    P --> Q[Display result image + metrics]
+```powershell
+uv run python cctv.py --check
+uv run python cctv.py --probe
+uv run python cctv.py
 ```
 
-### Video Inference
+The local dashboard uses `http://127.0.0.1:8503`; configured LAN access uses HTTPS
+on port 8443. The original app also has a **CCTV monitor** workspace. Two RTSP feeds
+and local HTTPS login have passed runtime checks. Actual IP-camera compatibility,
+access from a second LAN PC, and site accuracy still need installation checks.
 
-```mermaid
-flowchart TD
-    A[Upload MP4/AVI/MOV] --> B[Write to NamedTemporaryFile]
-    B --> C[cv2.VideoCapture]
-    C --> D{isOpened?}
-    D -- No --> E[Error + cleanup temp file]
-    D -- Yes --> F[Play/Speed controls]
-    F --> G[Read frame loop]
-    G --> H{speed > 1.0?}
-    H -- Yes --> I[Skip accumulated frames]
-    H -- No --> J[Process frame]
-    I --> J
-    J --> K[Convert BGR to RGB to PIL Image]
-    K --> L[YOLO inference + draw_safety_box]
-    L --> M[Display annotated frame + live metrics]
-    M --> N{More frames and playing?}
-    N -- Yes --> G
-    N -- No --> O[finally: release capture + delete temp file]
+## Run locally
+
+Use Python 3.13 and uv. The lockfile uses official CUDA 13.2 PyTorch wheels;
+GPU execution needs a compatible NVIDIA driver. CPU inference is supported.
+
+```powershell
+uv sync --locked
+uv run streamlit run app.py
 ```
 
-### Training Pipeline
+Select **Helmets and bare heads**, then **Selected checkpoint**. Local trained
+weights are ignored by Git; a fresh source checkout must train them first or use
+the app release, which includes the selected SHWD model.
 
-```mermaid
-flowchart TD
-    A[python train.py] --> B{datasets/safety/data.yaml exists?}
-    B -- No --> C[Return error: missing_data_yaml]
-    B -- Yes --> D{torch.cuda.is_available?}
-    D -- Yes --> E[device = 0 GPU]
-    D -- No --> F[device = cpu]
-    E --> G[Load YOLO yolo26l.pt]
-    F --> G
-    G --> H{Model loaded?}
-    H -- No --> I[Return error: model_load_failed]
-    H -- Yes --> J[model.train epochs=50 imgsz=640 batch=8]
-    J --> K{Training succeeded?}
-    K -- No --> L[Return error: train_failed]
-    K -- Yes --> M[Return ok + best model path]
+```powershell
+uv run data_setup.py
+uv run run_experiments.py
 ```
 
----
+The second command audits SHWD, runs a training smoke check, trains Small when no
+matching completed run exists, evaluates it, and processes the four supplied videos.
+Use `--profile ppe` explicitly for historical experiments. No equipment/worker
+dataset is included in the supported workflow.
 
-## Core Modules
+## Detection and events
 
-### `app.py` — Functions
+- **Image:** upload JPG/PNG and select Analyze image.
+- **Video:** upload MP4/AVI/MOV; Start, pause/resume, stop, and adjust playback speed.
+- **Browser camera:** allow camera access. Remote use requires HTTPS and may need TURN.
+- **Video link:** download a public YouTube or direct video, then Start.
 
-#### `get_latest_model_path() → str | None`
+Confidence defaults to **0.12**, favoring bare-head recall. Detection counts are
+per-frame observations, not unique workers. Enable **Helmet-required area** to
+record events for the entire frame or a normalized rectangular area. Without an
+area, the app displays detections without declaring violations.
 
-Scans two locations for trained `best.pt` files:
+Each stream owns its ByteTrack instance. One second of observed bare-head evidence
+confirms an event; short gaps do not add evidence. One second without qualifying
+evidence closes the episode. Recorded videos use source time, so playback speed
+and pausing do not change event timing. Track IDs apply only to one stream.
 
-1. `datasets/safety/results_yolov8n_100e/kaggle/working/runs/detect/train/weights/best.pt`
-2. `runs/detect/safety_model*/weights/best.pt` (glob pattern)
+Local event images and JSON live under `artifacts/events/`. Download JSON/CSV from
+the app. Changing source, model, threshold, or area starts new stream state.
 
-If multiple candidates exist, selects the one with the most recent filesystem modification time (`st_mtime`). Returns the path as a string, or `None` if no candidates found.
+Downloads are capped at 1,000 MB. YouTube uses up to 720p and may require Node.js;
+upstream bot/sign-in restrictions can prevent downloads. Private network URLs,
+playlists, live streams, embedded credentials, and unsupported ports are rejected.
 
-#### `load_model(model_name: str, custom_path: str) → tuple[YOLO | None, bool]`
+## Review the camera dataset
 
-Loads a YOLO model with a multi-stage fallback chain:
-
-| `model_name` value | Primary path | Fallback |
-|---|---|---|
-| `'Custom Trained Model'` | `custom_path` | `yolov8n.pt` |
-| `'YOLO26 Nano'` | `yolo26n.pt` | `yolov8n.pt` |
-| `'YOLO26 Large'` | `yolo26l.pt` | `yolov8n.pt` |
-
-Returns `(model_instance, is_custom)`. Returns `(None, False)` when both primary and fallback fail.
-
-#### `draw_safety_box(image, result, conf_threshold, is_custom) → tuple[ndarray, list, list]`
-
-Post-processes YOLO inference output:
-
-1. Validates inputs (`None` raises `ValueError`)
-2. Converts image to RGB if mode is not already RGB (handles grayscale `L` and `RGBA`)
-3. Iterates detection boxes, filtering by `conf_threshold`
-4. In custom mode: classifies each detection via `CLASSES_CONFIG` lookup
-5. In non-custom mode: only processes `cls_id == 0` as `"Person"` (neutral)
-6. Draws colored bounding boxes and labels onto the image
-7. Returns `(annotated_image, violation_reasons, safe_reasons)`
-
-#### `format_reasons(reasons_list: list) → str`
-
-Aggregates duplicate class names using `Counter` and formats as `"NO-Mask (2), NO-Hardhat (1)"`. Returns empty string for empty input.
-
-#### `main()`
-
-Streamlit entry point. Builds the sidebar (model selector, confidence slider), loads the model, then branches into Image / Video / Webcam processing modes.
-
----
-
-### `train.py` — Functions
-
-#### `train_safety_model() → dict`
-
-Runs a YOLO training job. Returns a structured dict in all code paths:
-
-| Outcome | Return value |
-|---|---|
-| `data.yaml` missing | `{"ok": False, "error": "missing_data_yaml"}` |
-| Model file fails to load | `{"ok": False, "error": "model_load_failed"}` |
-| Training raises exception | `{"ok": False, "error": "train_failed"}` |
-| Success | `{"ok": True, "best_model": "<path>", "device": <device>}` |
-
-Training configuration (hardcoded):
-
-| Parameter | Value |
-|---|---|
-| Base model | `yolo26l.pt` |
-| Dataset config | `datasets/safety/data.yaml` |
-| Epochs | 50 |
-| Image size | 640 |
-| Batch size | 8 |
-| Workers | 2 |
-| Output directory | `runs/detect/safety_model` |
-
----
-
-### `data_setup.py` — Functions
-
-#### `find_folder(root_dir, folder_name) → Path | None`
-
-Recursively searches `root_dir` for a directory named `folder_name` using `rglob`.
-
-#### `find_split_folder(root_dir, split_names) → Path | None`
-
-Searches for dataset split folders that contain **both** `images/` and `labels/` subdirectories. When multiple matches exist, selects the shallowest path (fewest directory components).
-
-#### `setup_data()`
-
-1. Looks for a valid `train` split under `datasets/safety`
-2. If absent, downloads from Kaggle: `snehilsanyal/construction-site-safety-image-dataset-roboflow`
-3. Requires all three splits: `train`, `valid`/`val`, and `test` — each with `images/` and `labels/`
-4. Generates `datasets/safety/data.yaml` with relative paths and `path: .`
-
----
-
-## Detection Classes
-
-The model recognizes 10 classes, categorized in `CLASSES_CONFIG`:
-
-| Class | Category | Bounding Box Color |
-|---|---|---|
-| Hardhat | Safe | Green `(0, 255, 0)` |
-| Mask | Safe | Green |
-| Safety Vest | Safe | Green |
-| NO-Hardhat | Danger | Red `(0, 0, 255)` |
-| NO-Mask | Danger | Red |
-| NO-Safety Vest | Danger | Red |
-| Person | Neutral | Blue `(255, 0, 0)` |
-| Safety Cone | Neutral | Blue |
-| machinery | Neutral | Blue |
-| vehicle | Neutral | Blue |
-
-When using a non-custom (pretrained) model, only `cls_id == 0` is processed and displayed as `"Person"` with neutral status.
-
----
-
-## Model Discovery and Fallback Chain
-
-```
-Custom trained best.pt (newest by mtime)
-    ↓ (not found or load fails)
-Selected preset: yolo26n.pt or yolo26l.pt
-    ↓ (load fails)
-Fallback: yolov8n.pt
-    ↓ (load fails)
-None → app displays error and stops
+```powershell
+uv run review_data.py extract
 ```
 
-Model files expected in workspace root: `yolo26n.pt`, `yolo26l.pt`, `yolov8n.pt`.
+This samples one frame every two seconds from the custom clip and the three videos
+under `datasets/safety/source_files/source_files/`. The prepared pack contains
+154 frames. New predictions are **unreviewed drafts**, never training ground truth.
+The user confirmed review and correction of the current 154 frames; these were
+approved and exported as `camera-v1` (112 train, 31 validation, 11 test).
 
----
+In the app select **Workspace → Annotation review**:
 
-## Input Validation and Safety
+1. Assign related clips to one source group and one train, validation, or test split.
+2. Correct boxes on the canvas. Check missed heads; approve, exclude, or leave drafts.
+3. Export a new dataset version. Approved empty frames become background negatives.
 
-| Check | Location | Behavior |
-|---|---|---|
-| `image is None` | `draw_safety_box` | Raises `ValueError` |
-| `result is None` | `draw_safety_box` | Raises `ValueError` |
-| Non-RGB image mode | `draw_safety_box` | Auto-converts via `image.convert('RGB')` |
-| Invalid image upload | `main()` Image branch | Catches `UnidentifiedImageError` / `OSError`, shows error |
-| Inference exception | `main()` Image branch | Catches `Exception`, shows error |
-| Video open failure | `main()` Video branch | Shows error, deletes temp file |
-| Video temp file cleanup | `main()` Video branch | `finally` block: `vf.release()` + `Path.unlink()` |
-| Webcam cleanup | `main()` Webcam branch | `finally` block: `cam.release()` |
-| Confidence filtering | `draw_safety_box` | Boxes below threshold are skipped |
+Review is stored in SQLite and survives reloads. Export rejects unassigned sources,
+changed images, conflicting group splits, and exact duplicates across splits.
+Additional frames can be extracted at specific timestamps. The video interval
+panel records reviewed bare-head intervals and normalized head locations.
+Evaluate only fully reviewed clips using `evaluate_events.py --source-hash HASH
+--whole-frame-helmet-required`; this explicitly asserts that the whole frame requires helmets.
+The report includes event recall, false alerts per hour, delay, FPS, and p95 latency.
 
----
-
-## Dataset Setup
-
-The dataset is sourced from Kaggle: [Construction Site Safety Image Dataset (Roboflow)](https://www.kaggle.com/datasets/snehilsanyal/construction-site-safety-image-dataset-roboflow).
-
-**Requirements:**
-- Kaggle API credentials (`kaggle.json` or `KAGGLE_API_TOKEN` environment variable)
-- Required only if the dataset is not already present at `datasets/safety/`
-
-**Split structure required:**
-
-```
-datasets/safety/
-└── css-data/
-    ├── train/
-    │   ├── images/
-    │   └── labels/
-    ├── valid/
-    │   ├── images/
-    │   └── labels/
-    └── test/
-        ├── images/
-        └── labels/
+```powershell
+uv run finetune_camera.py --data artifacts/camera_review/versions/camera-v1/data.yaml --name camera-v1
 ```
 
-Each split folder **must** contain both `images/` and `labels/` subdirectories, or `data_setup.py` will reject it.
+Fine-tuning requires an approved export with all three splits. It combines reviewed
+camera training images with eligible SHWD training images, keeping camera holdouts
+frozen. It tries Small at 640, then 960 and Medium at 960 if validation recall remains
+below target. Runs use up to 50 epochs, patience 10, seed 42, and batch 4 with memory
+fallback. A replacement requires successful test evaluation, at least 80% bare-head
+precision and 95% recall, and no recall regression against the prior model.
 
-Run:
+Camera fine-tuning is in progress. No camera model has been promoted yet. The test
+split contains only 10 bare-head boxes, so results will have limited statistical
+support. Event intervals still need recorded review before event metrics can run.
+Existing SHWD results do not establish deployment-camera accuracy.
 
-```bash
-python data_setup.py
+## Measured model results
+
+| Checkpoint | Target | Test precision | Test recall | Confidence |
+|---|---|---:|---:|---:|
+| SHWD YOLO26 Small | bare head | 81.5% | 95.5% | 0.12 |
+| Experimental PPE Medium | macro explicit violations | 81.6% | 79.7% | 0.17 |
+
+SHWD uses `helmet` and `bare_head`; its original `person` annotation means a head,
+not a full body. Source overlap limits claims about independent cameras. Higher
+thresholds trade recall for precision: SHWD validation at 0.29 gave 90.05% precision
+and 93.06% recall; 0.47 gave 95.01% precision and 88.44% recall.
+
+## Development
+
+```powershell
+uv run pytest -q
+uv run ruff check .
+uv pip check
+uv run verify_videos.py --profile shwd
+uv export --no-dev --format requirements-txt --no-hashes --output-file requirements.txt
 ```
 
-This generates `datasets/safety/data.yaml` with relative paths (`path: .`).
-
----
-
-## Training Pipeline
-
-```bash
-python train.py
-```
-
-- Uses `yolo26l.pt` as the base model
-- Reads dataset config from `datasets/safety/data.yaml`
-- Automatically selects GPU (device `0`) when CUDA is available; falls back to CPU
-- Saves trained weights to `runs/detect/safety_model/weights/best.pt`
-- The trained model is automatically discovered by `app.py` on next launch
-
----
-
-## Quickstart
-
-```bash
-# Clone the repository
-git clone https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision.git
-cd Hard-head-hat-Detection-Computer-Vision
-
-# Create and activate virtual environment
-python -m venv .venv
-# Windows
-.\.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# (Optional) Download dataset and generate data.yaml
-python data_setup.py
-
-# (Optional) Train a custom model
-python train.py
-
-# Launch the application
-streamlit run app.py
-```
-
-### Dependencies
-
-All direct dependencies from `requirements.txt`:
-
-| Package | Purpose |
-|---|---|
-| `ultralytics` | YOLO model loading, inference, and training |
-| `torch` | PyTorch backend for model execution and GPU detection |
-| `streamlit` | Web UI framework |
-| `opencv-python-headless` | Image/video processing (drawing, color conversion, video capture) |
-| `Pillow` | Image loading and mode conversion |
-| `numpy` | Array operations for image data |
-| `PyYAML` | YAML reading/writing for dataset config |
-| `kaggle` | Kaggle API for dataset download |
-| `pandas` | Data handling (used in training notebooks) |
-
----
-
-## Running the Application
-
-```bash
-streamlit run app.py
-```
-
-**What the user sees:**
-
-1. **Sidebar** — Model selector dropdown, confidence threshold slider (0.0–1.0)
-2. **Main area** — Radio button to choose input type: Image, Video, or Webcam
-3. **Image mode** — File uploader (JPG/PNG/JPEG) → "Analyze Safety" button → annotated result with violation/safe counts
-4. **Video mode** — File uploader (MP4/AVI/MOV, up to 1 GB) → play/pause checkbox → speed slider → real-time annotated frames with live metrics
-5. **Webcam mode** — "Start Webcam" checkbox → live annotated feed with violation/safe counts
-
-If no custom trained model is found, the sidebar warns: *"No custom model found"* and only YOLO26 Nano / YOLO26 Large are available. When using a non-custom model, a warning displays: *"Using Standard Model. Only 'Person' detection available."*
-
----
-
-## Testing
-
-**Framework:** pytest
-
-**Test suite:** 36 tests across 4 categories + a stress harness
-
-| Category | File | Tests | Covers |
-|---|---|---|---|
-| Unit | `tests/unit/test_app_unit.py` | 15 | `format_reasons`, `get_latest_model_path`, `load_model`, `draw_safety_box` (RGB, grayscale, RGBA, None, confidence filtering, custom/non-custom modes) |
-| Unit | `tests/unit/test_train_unit.py` | 4 | CPU/GPU selection, model load failure, missing `data.yaml` branch |
-| Unit | `tests/unit/test_data_setup_unit.py` | 5 | `find_folder`, `setup_data` YAML generation, missing val/test splits |
-| Integration | `tests/integration/test_pipelines_integration.py` | 4 | End-to-end: data setup → training → inference pipeline |
-| ML Behavior | `tests/ml/test_ml_behavior.py` | 8 | Model path selection, prediction shape, fallback chain, grayscale/RGBA handling, unknown classes |
-| Stress | `tests/stress/phase4_stress_runner.py` | 13 scenarios | 8K images, 2000 repeated inferences, rapid model reloads, temp file lifecycle, corrupted weights, invalid uploads, batch processing |
-
-Run all tests:
-
-```bash
-python -m pytest tests/ -q
-```
-
-Run stress scenarios:
-
-```bash
-python tests/stress/phase4_stress_runner.py
-```
-
-All tests are hermetic — they use `tmp_path`, `monkeypatch`, and fake objects. No network calls, no real model loading, no filesystem side effects.
-
----
-
-## Project Structure
-
-```
-Hard-head-hat-Detection-Computer-Vision/
-├── app.py                          # Streamlit inference UI
-├── train.py                        # YOLO training pipeline
-├── data_setup.py                   # Dataset download + data.yaml generation
-├── requirements.txt                # Python dependencies (9 packages)
-├── .streamlit/
-│   └── config.toml                 # maxUploadSize = 1000 MB
-├── datasets/
-│   └── safety/
-│       ├── data.yaml               # YOLO dataset config (auto-generated)
-│       └── css-data/               # Train/valid/test splits with images + labels
-├── tests/
-│   ├── conftest.py                 # Shared pytest fixtures (fake_streamlit)
-│   ├── unit/                       # Unit tests for all three modules
-│   ├── integration/                # Pipeline integration tests
-│   ├── ml/                         # ML behavior tests
-│   └── stress/                     # Stress harness (13 scenarios)
-├── yolo26n.pt                      # YOLO26 Nano weights
-├── yolo26l.pt                      # YOLO26 Large weights
-├── yolov8n.pt                      # YOLOv8 Nano fallback weights
-└── LICENSE                         # Mozilla Public License 2.0
-```
-
----
-
-## Limitations
-
-The following constraints are derived from the current implementation:
-
-| Limitation | Evidence |
-|---|---|
-| Training hyperparameters are hardcoded | `train.py` lines 37–46: epochs, batch, imgsz are constants with no CLI or config override |
-| No authentication or access control on the UI | `app.py` exposes the Streamlit interface without any login or session management |
-| Non-custom model only detects `cls_id == 0` as Person | `app.py` lines 120–122: all other class IDs are skipped via `continue` |
-| Video processing is single-threaded | `app.py` lines 229–250: frame read → inference → display runs sequentially in one loop |
-| No batch inference for video frames | Each frame is processed individually through `model(frame_pil)` |
-| Webcam mode has no recording/export capability | `app.py` lines 256–273: frames are displayed but not saved |
-| Dataset download requires Kaggle credentials | `data_setup.py` lines 64–68: `kaggle.api.authenticate()` must succeed |
-| No model versioning or experiment tracking | Trained weights are saved to a fixed path (`runs/detect/safety_model`) |
-| `pandas` is listed as a dependency but not imported by any production module | Only used in the Kaggle notebook under `datasets/` |
-
----
-
-## License
-
-This project is licensed under the [Mozilla Public License 2.0](LICENSE).
-
-Dataset: [Construction Site Safety (Roboflow)](https://universe.roboflow.com/roboflow-universe-projects/construction-site-safety) — CC BY 4.0.
-
-<p align="center">Made with ❤️ by Ahmad Mujtaba</p>
+`app.py` owns the interface; `safety/` contains inference, tracking/events, media,
+dataset conversion, and annotation review. Training and evaluation are standalone
+CLIs. Tests live under `tests/`; reports, weights, and review data live under ignored
+`artifacts/`. See [AGENTS.md](AGENTS.md), [TEST_REPORT.md](TEST_REPORT.md), and
+[model results](docs/MODEL_RESULTS.md).

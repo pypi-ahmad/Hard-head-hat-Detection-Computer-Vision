@@ -1,12 +1,12 @@
-# Code of Conduct
+# Code of conduct
 
-## Our Pledge
+## Our pledge
 
-We are committed to making participation in this project a harassment-free experience for everyone.
+Everyone should be able to participate in this project without harassment.
 
-## Our Standards
+## Our standards
 
-Examples of behavior that contributes to a positive environment:
+Expected behavior includes:
 
 - Being respectful and constructive
 - Giving and accepting feedback gracefully
@@ -18,9 +18,9 @@ Examples of unacceptable behavior:
 - Trolling, insulting, or derogatory comments
 - Publishing private information without permission
 
-## Enforcement Responsibilities
+## Maintainer responsibilities
 
-Project maintainers are responsible for clarifying and enforcing acceptable behavior.
+Project maintainers explain and enforce these standards.
 
 ## Scope
 
@@ -29,8 +29,8 @@ and community discussions.
 
 ## Reporting
 
-To report behavior that violates this Code of Conduct, open a GitHub Issue in this repository.
-Maintainers will review and respond appropriately.
+Report violations of this code of conduct by opening a GitHub Issue in this repository.
+Maintainers will review the report and respond.
 
 ## Enforcement
 

@@ -1,0 +1,15 @@
+# Copy to cameras.local.yaml. URLs and passwords belong in environment variables.
+confidence: 0.12
+inference_fps: 10
+retention_days: 7
+storage_mb: 2048
+cameras: []
+# cameras:
+#   - id: entrance
+#     name: Construction entrance
+#     url_env: CCTV_ENTRANCE_URL
+#     helmet_required_zone: [0.0, 0.0, 1.0, 1.0]
+#   - id: workshop
+#     name: Workshop
+#     url_env: CCTV_WORKSHOP_URL
+#     # Omit helmet_required_zone for detection without recording violations.

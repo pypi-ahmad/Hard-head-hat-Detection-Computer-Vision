@@ -1,283 +1,340 @@
+"""Streamlit interface for image, video, browser camera, and public video URLs."""
+
+from threading import Lock
+
+import av
 import streamlit as st
-from ultralytics import YOLO
-import cv2
 from PIL import Image, UnidentifiedImageError
-import numpy as np
-import tempfile
-import os
-import time
-from pathlib import Path
-from collections import Counter
+from streamlit_webrtc import webrtc_streamer
 
-# Configuration
-st.set_page_config(page_title="Site Safety Compliance AI", page_icon="🏗️")
+from safety.annotations import format_reasons
+from safety.events import StreamDetector
+from safety.inference import (
+    PRESETS,
+    Detector,
+    checkpoint_identity,
+    custom_checkpoints,
+    selected_checkpoint,
+    selected_resolution,
+)
+from safety.media import DownloadJob, VideoSession, save_upload
+from safety.profiles import PROFILES
 
-CLASSES_CONFIG = {
-    'Hardhat': 'safe',
-    'Mask': 'safe',
-    'Safety Vest': 'safe',
-    'NO-Hardhat': 'danger',
-    'NO-Mask': 'danger',
-    'NO-Safety Vest': 'danger',
-    'Person': 'neutral',
-    'Safety Cone': 'neutral',
-    'machinery': 'neutral',
-    'vehicle': 'neutral'
-}
 
-COLOR_MAP = {
-    'safe': (0, 255, 0),      # Green
-    'danger': (0, 0, 255),    # Red
-    'neutral': (255, 0, 0)    # Blue
-}
+@st.cache_resource(max_entries=2, show_spinner="Loading detector...")
+def cached_detector(identity):
+    return Detector(identity[0], imgsz=identity[3]) if len(identity) > 3 else Detector(identity[0])
 
-def get_latest_model_path():
-    """Automatically finds the most recent available model."""
-    candidates = []
-    deep_path = Path("datasets/safety/results_yolov8n_100e/kaggle/working/runs/detect/train/weights/best.pt")
-    if deep_path.exists():
-        candidates.append(deep_path)
 
-    base_dir = Path("runs/detect")
-    if base_dir.exists():
+class CameraProcessor:
+    def __init__(self, detector, confidence):
+        self.detector = detector
+        self.confidence = confidence
+        self.lock = Lock()
+        self.processing = Lock()
+        self.latest = None
+        self.error = None
+        self.active = True
+
+    def process(self, frame):
+        with self.processing:
+            return self._process(frame)
+
+    def _process(self, frame):
+        with self.lock:
+            confidence, active = self.confidence, self.active
+        if not active:
+            return frame
         try:
-            for folder in base_dir.glob("safety_model*"):
-                weights_path = folder / "weights" / "best.pt"
-                if weights_path.exists():
-                    candidates.append(weights_path)
-        except OSError as exc:
-            st.sidebar.warning(f"Model discovery warning: {exc}")
-
-    if candidates:
-        latest = max(candidates, key=lambda path: path.stat().st_mtime)
-        return str(latest)
-    return None
-
-def load_model(model_name, custom_path):
-    fallback_model = 'yolov8n.pt'
-
-    if model_name == 'Custom Trained Model':
-        if custom_path and os.path.exists(custom_path):
-            try:
-                return YOLO(custom_path), True
-            except Exception as exc:
-                st.sidebar.error(f"Custom model failed to load: {exc}")
-        else:
-            st.sidebar.error(f"Custom model not found at {custom_path}")
-        try:
-            return YOLO(fallback_model), False
+            picture = Image.fromarray(frame.to_ndarray(format="rgb24"))
+            result = self.detector.annotate(picture, confidence)
+            with self.lock:
+                self.latest = result
+            return av.VideoFrame.from_ndarray(result[0], format="rgb24")
         except Exception as exc:
-            st.sidebar.error(f"Fallback model failed to load: {exc}")
-            return None, False
-    
-    model_map = {
-        'YOLO26 Nano': 'yolo26n.pt',
-        'YOLO26 Large': 'yolo26l.pt'
-    }
-    selected_path = model_map.get(model_name, fallback_model)
-    try:
-        return YOLO(selected_path), False
-    except Exception as exc:
-        st.sidebar.error(f"Model load failed for {selected_path}: {exc}")
+            with self.lock:
+                self.error = str(exc)
+                self.active = False
+            return frame
+
+    def close(self):
+        with self.lock:
+            self.active = False
+        with self.processing:
+            if isinstance(self.detector, StreamDetector):
+                self.detector.finish()
+
+
+class MediaResources:
+    def __init__(self):
+        self.video = VideoSession()
+        self.download = None
+        self.camera = None
+        self.key = None
+
+    def close(self):
+        self.video.close()
+        if self.download:
+            self.download.close()
+            self.download = None
+        if self.camera:
+            self.camera.close()
+            self.camera = None
+
+
+@st.cache_resource(scope="session", on_release=lambda resource: resource.close())
+def session_media():
+    return MediaResources()
+
+
+def metrics(violations, equipment):
+    left, right = st.columns(2)
+    shwd = st.session_state.get("detection_profile", "shwd") == "shwd"
+    left.metric("Bare heads" if shwd else "Violation detections", len(violations))
+    right.metric("Helmets" if shwd else "PPE items detected", len(equipment))
+    if violations:
+        left.error(format_reasons(violations))
+    if equipment:
+        right.success(format_reasons(equipment))
+
+
+@st.fragment(run_every=0.2)
+def video_status(controller):
+    controller.touch()
+    with controller.lock:
+        latest, position, total = controller.latest, controller.position, controller.total
+    if latest is not None:
+        st.image(latest[0], alt="Annotated video frame")
+        metrics(latest[1], latest[2])
+    if total:
+        st.progress(min(1.0, position / total), text=f"Frame {position} of {total}")
+    if controller.error:
+        st.error(controller.error)
+    elif controller.finished:
+        st.caption("Processing finished. Start again to replay.")
+    processor = getattr(controller, "processor", None)
+    if isinstance(processor, StreamDetector):
+        event_status(processor, "video-events")
+
+
+@st.fragment(run_every=0.5)
+def camera_status(processor):
+    with processor.lock:
+        latest, error = processor.latest, processor.error
+    if latest:
+        metrics(latest[1], latest[2])
+    if error:
+        st.error(error)
+    if isinstance(processor.detector, StreamDetector):
+        event_status(processor.detector, "camera-events")
+
+
+def event_status(processor, key):
+    import json
+
+    events = json.loads(processor.json())["events"]
+    st.caption(f"{len(events)} confirmed events in this stream")
+    st.download_button("Export events JSON", processor.json(), "events.json", key=f"{key}-json")
+    st.download_button("Export events CSV", processor.csv(), "events.csv", key=f"{key}-csv")
+
+
+@st.fragment(run_every=0.5)
+def download_status(resources):
+    job = resources.download
+    if job is None:
+        return
+    if job.done.is_set():
+        if job.error:
+            st.error(f"Download failed: {job.error}")
+        else:
+            st.success("Video ready. Select Start to analyze it.")
+        return
+    with job.lock:
+        size, total = job.bytes, job.total
+    if total:
+        st.progress(min(size / total, 1.0), text=f"Downloaded {size / 1048576:.1f} MB")
+    else:
+        st.caption(f"Resolving or downloading video: {size / 1048576:.1f} MB")
+    if st.button("Cancel download"):
+        job.close()
+        resources.download = None
+        st.rerun()
+
+
+def video_controls(resources, detector, confidence, upload=None):
+    controller = resources.video
+    speed = st.select_slider("Playback speed", options=[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0], value=1.0)
+    controller.touch(confidence, speed)
+    start, pause, stop = st.columns(3)
+    if start.button("Start", key="start_video"):
         try:
-            return YOLO(fallback_model), False
-        except Exception as fallback_exc:
-            st.sidebar.error(f"Fallback model failed to load: {fallback_exc}")
-            return None, False
-
-def format_reasons(reasons_list):
-    if not reasons_list:
-        return ""
-    counts = Counter(reasons_list)
-    return ", ".join([f"{k} ({v})" for k, v in counts.items()])
-
-def draw_safety_box(image, result, conf_threshold, is_custom):
-    if image is None:
-        raise ValueError("Input image cannot be None")
-    if result is None:
-        raise ValueError("Inference result cannot be None")
-
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    img_cv = np.array(image)
-    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2BGR)
-    
-    violation_reasons = []
-    safe_reasons = []
-    
-    boxes = result.boxes
-    names = result.names
-    
-    if boxes is not None:
-        for box in boxes:
-            conf = float(box.conf[0])
-            if conf < conf_threshold:
-                continue
-                
-            cls_id = int(box.cls[0])
-            cls_name = names.get(cls_id, str(cls_id))
-            
-            # --- Logic Split ---
-            if not is_custom:
-                if cls_id != 0: continue
-                status = 'neutral'
-                cls_name = "Person"
+            if upload is not None:
+                path, owner = save_upload(upload)
+                controller.start(path, detector, owner)
+            elif resources.download and resources.download.done.is_set() and not resources.download.error:
+                controller.start(resources.download.path, detector)
             else:
-                status = CLASSES_CONFIG.get(cls_name, 'neutral')
-            
-            # Track Reasons
-            if status == 'danger':
-                violation_reasons.append(cls_name)
-            elif status == 'safe':
-                safe_reasons.append(cls_name)
-                
-            color = COLOR_MAP.get(status, (255, 0, 0))
-            
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            cv2.rectangle(img_cv, (x1, y1), (x2, y2), color, 2)
-            
-            label = f"{cls_name}: {conf:.0%}"
-            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(img_cv, (x1, y1 - 25), (x1 + w, y1), color, -1)
-            cv2.putText(img_cv, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-        
-    return cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB), violation_reasons, safe_reasons
+                st.info("Upload or download a video first.")
+        except Exception as exc:
+            st.error(str(exc))
+    if pause.button("Pause / resume", key="pause_video"):
+        if controller.playing.is_set():
+            controller.playing.clear()
+        elif controller.thread and not controller.finished:
+            controller.playing.set()
+    if stop.button("Stop", key="stop_video"):
+        controller.close()
+    video_status(controller)
+
 
 def main():
-    st.title("Site Safety Compliance AI 🏗️")
-    
-    # Sidebar
-    st.sidebar.header("Model Settings")
-    latest_custom_model = get_latest_model_path()
-    model_options = ['YOLO26 Nano', 'YOLO26 Large']
-    
-    if latest_custom_model:
-        model_options.insert(0, 'Custom Trained Model')
-        st.sidebar.success(f"Model Loaded!")
-    else:
-        st.sidebar.warning("No custom model found.")
-
-    selected_model = st.sidebar.selectbox("Select Model", model_options, index=0)
-    confidence = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.4)
-    
-    # Load Model
-    model, is_custom = load_model(selected_model, latest_custom_model)
-    if model is None:
-        st.error("No usable model could be loaded. Check model files and retry.")
+    st.set_page_config(page_title="Helmet detection", page_icon=":material/health_and_safety:", layout="wide")
+    st.title("Helmet detection")
+    st.caption("Detect helmets and bare heads. Counts describe detections, not unique workers.")
+    resources = session_media()
+    profile = st.sidebar.selectbox("Detection mode", ["shwd", "ppe"],
+                                   format_func=lambda value: PROFILES[value]["title"],
+                                   key="detection_profile")
+    if st.session_state.get("active_profile") != profile:
+        resources.close()
+        st.session_state.active_profile = profile
+    try:
+        default, default_confidence = selected_checkpoint(profile)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        st.error(f"Unable to read selected checkpoint metadata: {exc}")
         return
-    
-    if not is_custom:
-        st.warning("⚠️ Using Standard Model. Only 'Person' detection available.")
+    options = {"Selected checkpoint": default} if default else {}
+    if profile == "ppe":
+        options.update(PRESETS)
+    options.update({f"Custom: {path.parent.parent.name}": path for path in custom_checkpoints(profile)})
+    if not options:
+        st.info("This detection mode has no trained checkpoint yet.")
+        return
+    if profile != "ppe" and default is None:
+        st.warning("Experimental checkpoint: validation requirements have not been met yet.")
+    label = st.sidebar.selectbox("Model", list(options))
+    confidence = st.sidebar.slider("Confidence", 0.0, 1.0, default_confidence, step=0.01,
+                                   key=f"confidence-{profile}-{label}")
+    page = st.sidebar.selectbox("Workspace", ["Detection", "CCTV monitor", "Annotation review", "Event review"])
+    if page == "CCTV monitor":
+        from cctv_app import live_view
+        from safety.cctv import RUNTIME
 
-    # Input
-    input_type = st.radio("Select Input", ["Image", "Video", "Webcam"])
-    
-    if input_type == "Image":
-        uploaded_file = st.file_uploader("Upload Image", type=['jpg', 'png', 'jpeg'])
-        if uploaded_file:
+        resources.close()
+        st.subheader("CCTV monitor")
+        live_view(RUNTIME)
+        return
+    source = st.radio("Input", ["Image", "Video", "Browser camera", "Video link"], horizontal=True)
+    zone = None
+    if profile == "shwd" and source != "Image" and page == "Detection":
+        required = st.sidebar.checkbox("Helmet-required area")
+        if required:
+            rectangle = st.sidebar.checkbox("Use rectangular area")
+            if rectangle:
+                from safety.review_ui import zone_editor
+
+                with st.sidebar:
+                    st.caption("Drag the area in frame space. The yellow outline appears on video.")
+                    zone = zone_editor()
+            else:
+                zone = (0., 0., 1., 1.)
+        st.sidebar.caption("Events require 1 second of bare-head evidence. IDs belong to this stream only.")
+    identity = checkpoint_identity(options[label])
+    try:
+        if label == "Selected checkpoint" and selected_resolution(profile) != 640:
+            identity += (selected_resolution(profile),)
+    except (OSError, ValueError, TypeError) as exc:
+        st.error(f"Unable to read inference resolution: {exc}")
+        return
+    key = (profile, identity, source, confidence, zone, page)
+    if resources.key != key:
+        resources.close()
+        resources.key = key
+    try:
+        detector = cached_detector(identity)
+        actual_profile = getattr(detector, "profile", "ppe" if detector.is_custom else None)
+        generic_preset = profile == "ppe" and options[label] in PRESETS.values()
+        if not generic_preset and actual_profile != profile:
+            raise ValueError("Checkpoint classes do not match this detection mode")
+    except Exception as exc:
+        st.error(f"Unable to load selected model: {exc}")
+        return
+    st.sidebar.caption(str(detector.path.name))
+    if page == "Annotation review":
+        if profile != "shwd":
+            st.info("Select the helmet detection mode to review annotations.")
+            return
+        from safety.review_ui import review_page
+        review_page(detector)
+        return
+    if page == "Event review":
+        import json
+
+        from safety.paths import ARTIFACTS
+
+        journals = sorted((ARTIFACTS / "events").glob("*/events.json"),
+                          key=lambda path: path.stat().st_mtime, reverse=True)
+        if not journals:
+            st.info("No confirmed events recorded yet. Mark a helmet-required area during detection.")
+            return
+        journal = st.selectbox("Recorded stream", journals, format_func=lambda p: p.parent.name)
+        report = json.loads(journal.read_text(encoding="utf-8"))
+        st.write(report["source"])
+        st.dataframe(report["events"])
+        event = st.selectbox("Event image", report["events"], format_func=lambda e: str(e["id"]))
+        if event.get("image"):
+            st.image(event["image"], alt="Recorded event image")
+        st.download_button("Download journal", journal.read_bytes(), "events.json")
+        return
+    if profile == "shwd" and source != "Image":
+        if not hasattr(resources, "stream") or resources.stream_key != key:
+            resources.stream = StreamDetector(detector, confidence, zone, source)
+            resources.stream_key = key
+        detector = resources.stream
+    if not getattr(detector, "is_custom", True):
+        st.warning("This pretrained model shows person detections only. Select a PPE checkpoint for equipment detection.")
+    if source == "Image":
+        uploaded = st.file_uploader("Image", type=["jpg", "jpeg", "png"])
+        if uploaded:
             try:
-                image = Image.open(uploaded_file)
-            except (UnidentifiedImageError, OSError):
-                st.error("Uploaded file is not a valid image.")
-                return
+                image = Image.open(uploaded).convert("RGB")
+                st.image(image, alt="Uploaded image", width="stretch")
+                if st.button("Analyze image"):
+                    annotated, violations, equipment = detector.annotate(image, confidence)
+                    st.image(annotated, alt="PPE detections", width="stretch")
+                    metrics(violations, equipment)
+            except (UnidentifiedImageError, OSError, ValueError, RuntimeError) as exc:
+                st.error(f"Image analysis failed: {exc}")
+    elif source == "Video":
+        uploaded = st.file_uploader("Video", type=["mp4", "avi", "mov"])
+        upload_key = (uploaded.file_id if uploaded else None)
+        if st.session_state.get("upload_key") != upload_key:
+            resources.video.close()
+            st.session_state.upload_key = upload_key
+        if uploaded:
+            video_controls(resources, detector, confidence, uploaded)
+    elif source == "Video link":
+        url = st.text_input("Public YouTube or direct video URL", placeholder="https://...")
+        st.caption("Prerecorded videos only, up to 1,000 MB. YouTube downloads use up to 720p.")
+        if st.button("Download video", disabled=not url):
+            resources.close()
+            resources.download = DownloadJob(url)
+        download_status(resources)
+        video_controls(resources, detector, confidence)
+    else:
+        if resources.camera is None:
+            resources.camera = CameraProcessor(detector, confidence)
+        with resources.camera.lock:
+            resources.camera.confidence = confidence
+        webrtc_streamer(
+            key=f"camera-{identity}", video_frame_callback=resources.camera.process,
+            media_stream_constraints={"video": True, "audio": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+            async_processing=True,
+        )
+        st.caption("Allow browser camera access. Remote connections require HTTPS; some networks also require TURN.")
+        camera_status(resources.camera)
 
-            st.image(image, caption="Uploaded Image", use_container_width=True)
-            if st.button("Analyze Safety"):
-                try:
-                    results = model(image)
-                    annotated_img, v_reasons, s_reasons = draw_safety_box(image, results[0], confidence, is_custom)
-                except Exception as exc:
-                    st.error(f"Inference failed: {exc}")
-                    return
-
-                st.image(annotated_img, caption="Result", use_container_width=True)
-                
-                col1, col2 = st.columns(2)
-                col1.metric("Violations 🛑", len(v_reasons))
-                if v_reasons: col1.error(f"Reasons: {format_reasons(v_reasons)}")
-                col2.metric("Safe Workers 🟢", len(s_reasons))
-                if s_reasons: col2.success(f"Gear: {format_reasons(s_reasons)}")
-
-    elif input_type == "Video":
-        uploaded_file = st.file_uploader("Upload Video", type=['mp4', 'avi', 'mov'])
-        if uploaded_file:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tfile:
-                tfile.write(uploaded_file.read())
-                video_path = tfile.name
-
-            vf = cv2.VideoCapture(video_path)
-            if not vf.isOpened():
-                st.error("Unable to open uploaded video file.")
-                Path(video_path).unlink(missing_ok=True)
-                return
-            
-            # --- Video Controls ---
-            col_ctrl1, col_ctrl2 = st.columns([1, 2])
-            with col_ctrl1:
-                run_video = st.checkbox("▶️ Play Video", value=True)
-            with col_ctrl2:
-                speed = st.select_slider("Playback Speed", 
-                                         options=[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0], 
-                                         value=1.0)
-
-            stframe = st.empty()
-            metric_ph = st.empty()
-            frame_skip_accumulator = 0.0
-            
-            try:
-                while vf.isOpened() and run_video:
-                    if speed > 1.0:
-                        frame_skip_accumulator += speed - 1.0
-                        while frame_skip_accumulator >= 1.0:
-                            skipped_ret, _ = vf.read()
-                            if not skipped_ret:
-                                break
-                            frame_skip_accumulator -= 1.0
-
-                    ret, frame = vf.read()
-                    if not ret:
-                        break
-
-                    frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    results = model(frame_pil)
-                    annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
-                    stframe.image(annotated_frame)
-
-                    with metric_ph.container():
-                         col1, col2 = st.columns(2)
-                         col1.metric("Violations", len(v_reasons))
-                         if v_reasons: col1.error(format_reasons(v_reasons))
-                         col2.metric("Safe", len(s_reasons))
-                         if s_reasons: col2.success(format_reasons(s_reasons))
-
-                    if speed < 1.0:
-                        time.sleep(0.1 * (1 / speed))
-            finally:
-                vf.release()
-                Path(video_path).unlink(missing_ok=True)
-
-    elif input_type == "Webcam":
-        run_cam = st.checkbox("Start Webcam")
-        if run_cam:
-            cam = cv2.VideoCapture(0)
-            stframe = st.empty()
-            metric_ph = st.empty()
-            try:
-                while cam.isOpened():
-                    ret, frame = cam.read()
-                    if not ret:
-                        break
-                    frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    results = model(frame_pil)
-                    annotated_frame, v_reasons, s_reasons = draw_safety_box(frame_pil, results[0], confidence, is_custom)
-                    stframe.image(annotated_frame)
-
-                    with metric_ph.container():
-                         col1, col2 = st.columns(2)
-                         col1.metric("Violations", len(v_reasons))
-                         col2.metric("Safe", len(s_reasons))
-            finally:
-                cam.release()
 
 if __name__ == "__main__":
     main()

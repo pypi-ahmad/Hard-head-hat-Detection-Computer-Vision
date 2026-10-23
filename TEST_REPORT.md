@@ -1,131 +1,100 @@
-# TEST REPORT
+# Verification report
 
-## 1. System Overview
+## CCTV installation release 0.2.0 — 23 October 2026
 
-- Project type: Streamlit + YOLO PPE detection system.
-- Main runtime entrypoints:
-  - `app.py` (inference UI for Image/Video/Webcam)
-  - `train.py` (model training)
-  - `data_setup.py` (dataset split validation + `data.yaml` generation)
-- Model files present in workspace root:
-  - `yolo26n.pt`
-  - `yolo26l.pt`
-  - `yolov8n.pt`
-- Current automated test suite files (7):
-  - `tests/conftest.py`
-  - `tests/unit/test_app_unit.py`
-  - `tests/unit/test_train_unit.py`
-  - `tests/unit/test_data_setup_unit.py`
-  - `tests/integration/test_pipelines_integration.py`
-  - `tests/ml/test_ml_behavior.py`
-  - `tests/stress/phase4_stress_runner.py`
+- Full suite: 106 tests passed after adding CCTV configuration, worker lifecycle,
+  credential redaction, reconnect, stale inference, retention, crash recovery,
+  gateway configuration, and dashboard checks. Ruff passed.
+- Two actual RTSP/TCP connections were opened to MediaMTX 1.21.2 on loopback,
+  publishing the supplied recorded clip. Both processed frames using the SHWD
+  detector on CPU. The first publisher was stopped and restarted; its worker
+  recovered after two reconnect attempts while the second continued processing.
+  The recovery snapshot had 8 and 27 processed frames. Evidence:
+  `artifacts/cctv_rtsp_test/verification.json`. This was not a physical IP camera test.
+- Caddy 2.11.7 returned 401 for absent/wrong credentials and 200 for the correct
+  credentials. TLS was validated against the generated local root CA. Chromium
+  authenticated and rendered the dark dashboard without a Streamlit exception.
+  The test found and fixed Windows CRLF translation during password hashing.
+  Evidence: `artifacts/cctv_gateway_test/verification.json`.
+- Windows PowerShell scripts parsed successfully. Caddy validated the generated
+  HTTPS/authentication configuration. Its downloaded archive matched the upstream
+  SHA512 checksum; the build and download script pin its SHA256 hash.
+- A fresh app extraction installed 98 locked runtime packages. The actual Windows
+  installer passed its package checksums, model load, local configuration creation,
+  and desktop shortcut creation; the previous desktop state was restored afterward.
+  The extracted runner then started its worker, Streamlit, and Caddy together,
+  processed a demo frame on CPU, exited normally, and released ports 8503/8443.
+  This short run included a 14.3-second cold CPU inference during concurrent GPU
+  training; it is not a throughput measurement. Preview freshness checks include
+  the processed frame's age so slow inference cannot label old content as live.
 
-## 2. Issues Found
+Physical IP-camera/NVR compatibility, a second LAN client, long-duration uptime,
+real Windows logon restart, and per-site detection/event accuracy remain unverified.
+The app package uses the existing selected SHWD checkpoint; the separate camera
+adaptation run is still training. No new camera accuracy result is claimed.
 
-Evidence below is based on applied remediation diffs in tracked files:
+## SHWD overhaul — 23 October 2026
 
-- Inference/model-loading robustness issues (handled through code changes in `app.py`):
-  - Model selection mapping corrected for YOLO26 options.
-  - Fallback handling hardened to return explicit unusable state when both primary and fallback fail.
-  - Input validation added for `None` image/result and invalid uploaded images.
-  - Resource handling improved for video/webcam lifecycle.
-- Training pipeline error-contract issues (handled in `train.py`):
-  - Explicit structured return values added for missing data config, model load failure, and training failure.
-- Dataset split/schema safety issues (handled in `data_setup.py`):
-  - Strict split discovery now requires both `images/` and `labels/`.
-  - Validation/test fallback shortcuts removed; setup now fails fast when required splits are missing.
-  - Portable dataset path output (`path: .`) enforced.
+- Pytest: 87 passed after adding review/export, event-timing, and training-gate checks.
+- Ruff: passed. Dependency compatibility: 103 installed packages compatible.
+- All four supplied videos processed with SHWD and independent ByteTrack state:
+  921 custom-clip frames, 1,826 hardhat frames, 648 Indian-worker frames, and 4,784
+  JapanPPE frames. All 8,179 output frames decoded.
+- First tracked full-video pass measured 23.93, 52.22, 26.56, and 44.00 FPS respectively.
+  These include local processing/encoding, not browser/network latency; they are
+  not a guarantee of live-camera throughput.
+- Chromium rendered the annotation editor. Drawing, resizing, relabeling, deleting the final box, saving, and reload persistence
+  passed. The browser test exposed a stale frame-picker object; selecting by stable
+  frame ID fixed it. The automated temporary edit was restored, and no frames were approved.
+- `review_data.py extract` decoded all four videos and prepared 154 unreviewed drafts.
+- Pictor is absent from active Python source, profile choices, and converter paths.
 
-## 3. Tests Created
+## Remaining verification limits
 
-Test inventory in repository (evidence: test tree and files):
+Physical webcam capture and local WebRTC transport passed in headed Chromium:
+the real USB camera supplied 640×480 at 30 FPS, the peer connection reached connected,
+and returned decoded frames advanced from 12 to 306 over about 10 seconds (29.3 FPS).
+The app displayed inference metrics. No synthetic media was used, no camera imagery
+was saved, and the browser/camera was closed after the check. Remote HTTPS/TURN
+deployment remains unverified. Evidence: `artifacts/physical_webrtc_verification.json`.
 
-- Unit tests:
-  - `tests/unit/test_app_unit.py`
-  - `tests/unit/test_train_unit.py`
-  - `tests/unit/test_data_setup_unit.py`
-- Integration tests:
-  - `tests/integration/test_pipelines_integration.py`
-- ML behavior tests:
-  - `tests/ml/test_ml_behavior.py`
-- Stress harness:
-  - `tests/stress/phase4_stress_runner.py`
+The user confirmed personal review and correction of all 154 draft annotations.
+The database was backed up, approval recorded, and `camera-v1` exported with
+112 train, 31 validation, and 11 test frames. Fine-tuning is in progress. Independent
+camera accuracy, event recall, false-alert rate, delay, and subgroup metrics remain
+unmeasured. Event intervals still lack recorded review.
 
-Latest execution evidence:
+The bulk deletion command was rejected by automatic approval review. Narrower,
+verified exact-path deletions succeeded: Pictor data, weights, evaluation/video
+artifacts, and obsolete orchestration files are removed. Shared runtime scripts
+and reports no longer include its profile.
 
-- Command: `python -m pytest -q`
-- Result: `36 passed in 5.90s`
+Existing SHWD and experimental PPE metrics remain documented in
+[model results](docs/MODEL_RESULTS.md). They predate this software overhaul and are
+not measurements of newly trained camera models.
 
-## 4. Stress Results
+A real PyAV camera callback passed using SHWD inference. A 120-frame cold-start
+check measured 11.61 FPS and 78.8 ms p95; startup was included. This short check
+did not meet the 15 FPS target. Full-clip averages were higher; long-duration browser
+throughput and queue behavior remain unverified. Local Markdown links: 22 checked,
+none broken.
 
-Evidence source: `tests/stress/phase4_stress_results.json`.
+A subsequent 120-frame run measured 17.62 FPS after 20 warm-up frames, with
+78.2 ms p95 latency; its cold-start average was 11.19 FPS. Saved review edits survive
+a browser reload; all 154 frames remained unreviewed at that point, before the
+subsequent user approval recorded above.
 
-- Total scenarios: 13
-- Status summary:
-  - Pass: 13
-  - Fail: 0
-- Categories covered:
-  - system
-  - ml
-  - data
-- Example scenario evidence from latest JSON:
-  - `large_image_single_pass_8k` → pass
-  - `repeated_inference_2000_calls` → pass
-  - `gpu_cpu_switch_train_device_selection` → pass
-  - `corrupted_weights_model_load` → pass
-  - `video_tempfile_lifecycle_create_use_cleanup_50` → pass
-  - `wrong_schema_missing_train_images` → pass
+The normalized rectangular-area drawing control passed in Chromium.
 
-## 5. Fixes Applied
+## Camera training preparation follow-up
 
-Evidence source: current tracked diffs in changed files.
+The first attempt stopped before training because SHWD image hashes had changed.
+All 7,564 source and label records were checked. Each of the 64 changed JPEGs matched
+Ultralytics' repair output byte-for-byte; original downloads and labels were unchanged.
+Preparation now repairs JPEG end markers before hashing and records the original
+hash separately. The previous manifest is backed up. Integrity validation now runs
+before creating training output; the failed partial directory was moved to
+`bin/camera-v1-failed-integrity`.
 
-- `app.py`
-  - Model discovery uses newest candidate by mtime.
-  - YOLO26 model map points to `yolo26n.pt` and `yolo26l.pt`.
-  - Fallback model loading and terminal failure handling are explicit.
-  - Added guards for invalid image and inference failure paths.
-  - Added null input checks in `draw_safety_box`.
-  - Video/webcam processing now uses safer cleanup flow.
-- `train.py`
-  - Added missing `data.yaml` precheck.
-  - Added explicit structured return contract for load/train failures and success.
-  - Removed dead import.
-- `data_setup.py`
-  - Added strict split-folder validator (`images` + `labels`).
-  - Added strict validation/test split requirements.
-  - Removed weak fallback behavior.
-  - Set YAML `path` to `.` and explicit UTF-8 write.
-- `datasets/safety/data.yaml`
-  - `path` updated to `.`.
-
-## 6. Cleanup Done
-
-Evidence source: repository diff state.
-
-- Removed orphaned file:
-  - `detection_config.json` (deleted).
-- Removed dead imports:
-  - `sys` removed from `train.py`.
-  - `zipfile` removed from `data_setup.py`.
-- Data config portability cleanup:
-  - absolute dataset path removed from `datasets/safety/data.yaml`.
-- Post-verification fixes (pre-push round):
-  - `requirements.txt`: added `torch`, `Pillow`, `PyYAML` (directly imported deps).
-  - `.gitignore`: added `__pycache__/`, `*.pyc`, `tests/stress/phase4_stress_results.json`.
-  - `app.py`: added `image.convert('RGB')` guard in `draw_safety_box` for grayscale/RGBA inputs.
-  - `tests/unit/test_train_unit.py`: made all tests hermetic (tmp_path + monkeypatch.chdir); added `test_train_safety_model_returns_missing_data_yaml_when_config_absent`.
-  - `tests/unit/test_app_unit.py`: added `test_get_latest_model_path_selects_newest_by_mtime`, `test_draw_safety_box_handles_grayscale_image`, `test_draw_safety_box_handles_rgba_image`.
-  - `tests/ml/test_ml_behavior.py`: added `test_grayscale_image_auto_converts_to_rgb`, `test_rgba_image_auto_converts_to_rgb`.
-  - `tests/stress/phase4_stress_runner.py`: renamed misleading scenario to `video_tempfile_lifecycle_create_use_cleanup_50`; clarified return schema.
-
-## 7. Final Stability
-
-Final validation loop evidence:
-
-- Automated tests: `36 passed` (no failures, no warnings).
-- Stress scenarios: latest run shows all 13 scenarios passing.
-- Regressions observed in final validation loop: none.
-- Pre-push verification: all 6 blocking issues resolved; verdict upgraded to **SAFE TO PUSH**.
-
-Status: **STABLE**
+Focused regression checks passed: 16 dataset tests and 8 review/event tests.
+The complete suite then passed: 89 tests. Ruff also passed.
