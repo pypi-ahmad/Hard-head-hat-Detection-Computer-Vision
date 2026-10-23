@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- Added direct app downloads, published checksum, and source-versus-app guidance.
+- Documented release-build prerequisites, package contents, and publication checks.
+- Updated dataset provenance, contributor guidance, and verification status.
+- Kept v0.2.0 package contents and public-dataset metrics separate from pending
+  camera training and site qualification.
+
 ## [0.2.0] — 2026-10-23
 
 - Added continuous RTSP/HTTP(S) camera monitoring with independent capture and inference.
@@ -8,7 +18,7 @@
 - Added event-session rotation, crash recovery, age/storage retention, and UTC confirmation times.
 - Added a Windows app ZIP containing the selected SHWD model, Caddy, notices, and file checksums.
 - Verified two RTSP feeds, reconnect isolation, HTTPS authentication, and browser rendering locally.
-- Retained the qualified public-SHWD checkpoint while camera adaptation remains in progress.
+- Retained the evaluated public-SHWD checkpoint while camera adaptation remains in progress.
 
 Actual IP-camera deployment and event accuracy still require site qualification.
 

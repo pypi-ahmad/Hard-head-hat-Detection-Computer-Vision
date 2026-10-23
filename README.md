@@ -30,6 +30,19 @@ on port 8443. The original app also has a **CCTV monitor** workspace. Two RTSP f
 and local HTTPS login have passed runtime checks. Actual IP-camera compatibility,
 access from a second LAN PC, and site accuracy still need installation checks.
 
+### Published package
+
+- [Download Windows x64 app](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision/releases/download/v0.2.0/HelmetCCTV-0.2.0-windows-x64.zip)
+- [Download SHA256SUMS.txt](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision/releases/download/v0.2.0/SHA256SUMS.txt)
+- ZIP size: 36,965,746 bytes. SHA256:
+
+```text
+163251c91f41e5f399b0164040a9ec4f27eab0b8ed125a1d85a760e751429426
+```
+
+This package contains the v0.2.0 source snapshot. Documentation on `main` can be
+newer; updating these files does not update an installed app.
+
 ## Run locally
 
 Use Python 3.13 and uv. The lockfile uses official CUDA 13.2 PyTorch wheels;
@@ -147,3 +160,12 @@ dataset conversion, and annotation review. Training and evaluation are standalon
 CLIs. Tests live under `tests/`; reports, weights, and review data live under ignored
 `artifacts/`. See [AGENTS.md](AGENTS.md), [TEST_REPORT.md](TEST_REPORT.md), and
 [model results](docs/MODEL_RESULTS.md).
+
+## Documentation
+
+- [Windows installation and operation](docs/CCTV_INSTALL.md)
+- [Release building](docs/RELEASE_BUILD.md) and [v0.2.0 release notes](docs/RELEASE_0.2.0.md)
+- [Dataset choice](docs/DATASET_SELECTION.md), [preparation](docs/DATASET_PREPARATION.md),
+  and [review findings](docs/DATASET_REVIEW.md)
+- [Security](SECURITY.md), [component licenses](THIRD_PARTY_NOTICES.md), and [changelog](CHANGELOG.md)
+- [Documentation synchronization record](docs/DOC_SYNC_2026-10-23.md)

@@ -14,6 +14,21 @@ in [CCTV_INSTALL.md](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Compu
 The app ZIP includes the trained model and Caddy gateway. GitHub's automatic
 source archives contain source code and do not include the trained checkpoint.
 
+## Published artifacts
+
+- [Windows x64 app ZIP](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision/releases/download/v0.2.0/HelmetCCTV-0.2.0-windows-x64.zip)
+- [SHA256 checksums](https://github.com/pypi-ahmad/Hard-head-hat-Detection-Computer-Vision/releases/download/v0.2.0/SHA256SUMS.txt)
+
+The release was built from commit `b81e74782e6e22a120ac014ada42f1e3d8c6974b`.
+The 36,965,746-byte app ZIP has SHA256:
+
+```text
+163251c91f41e5f399b0164040a9ec4f27eab0b8ed125a1d85a760e751429426
+```
+
+These notes describe the release snapshot. Later branch documentation does not
+change the published ZIP or its included checkpoint.
+
 ## Included
 
 - Multiple RTSP/HTTP(S) feeds, independent capture, latest-frame inference,

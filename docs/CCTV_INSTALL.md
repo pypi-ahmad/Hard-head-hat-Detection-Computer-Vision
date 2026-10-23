@@ -28,6 +28,12 @@ Camera streams need configuration before live monitoring. An empty camera list
 is valid and displays setup guidance. The app ZIP includes its trained model;
 GitHub's automatically generated source ZIP does not.
 
+The published v0.2.0 ZIP is 36,965,746 bytes, with SHA256:
+
+```text
+163251c91f41e5f399b0164040a9ec4f27eab0b8ed125a1d85a760e751429426
+```
+
 ## Add cameras
 
 Edit `config/cameras.local.yaml`, created by the installer:

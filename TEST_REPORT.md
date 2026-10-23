@@ -33,6 +33,14 @@ real Windows logon restart, and per-site detection/event accuracy remain unverif
 The app package uses the existing selected SHWD checkpoint; the separate camera
 adaptation run is still training. No new camera accuracy result is claimed.
 
+The published app ZIP was downloaded back from GitHub and its SHA256 matched the
+local release build: `163251c91f41e5f399b0164040a9ec4f27eab0b8ed125a1d85a760e751429426`.
+Its size is 36,965,746 bytes. The archive passed CRC and file-manifest checks;
+76 payload files were hashed. See [release notes](docs/RELEASE_0.2.0.md).
+
+The sections below retain earlier check results in execution order. The current
+release suite result is 106 passed; lower counts describe earlier stages.
+
 ## SHWD overhaul — 23 October 2026
 
 - Pytest: 87 passed after adding review/export, event-timing, and training-gate checks.

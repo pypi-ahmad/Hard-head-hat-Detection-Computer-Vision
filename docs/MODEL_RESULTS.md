@@ -1,5 +1,13 @@
 # Model results
 
+## Release checkpoint
+
+The v0.2.0 Windows app bundles the selected SHWD YOLO26 Small model at 640-pixel
+inference resolution and confidence 0.12. The package places it at
+`artifacts/shwd/model.pt`; the development selection points to
+`artifacts/shwd/runs/yolo26s/weights/best.pt`. These are the existing public-dataset
+results below, not completed camera-adaptation results.
+
 ## Existing checkpoints
 
 | Profile | Checkpoint | Target | Test precision | Test recall | Confidence |

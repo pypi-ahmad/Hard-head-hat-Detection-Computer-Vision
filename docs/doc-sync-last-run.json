@@ -1,11 +1,29 @@
 {
   "date": "2026-10-23",
-  "scope": "SHWD overhaul and CCTV installation release v0.2.0",
+  "scope": "All project-authored documentation; code-to-docs synchronization",
   "cctv_rtsp": "two_local_server_feeds_and_reconnect_passed",
   "lan_https": "local_tls_authentication_and_browser_passed",
   "camera_training": "in_progress",
   "approved_camera_frames": 154,
   "reviewed_event_intervals": "pending",
   "physical_webcam_webrtc": "passed_local_headed_chromium",
-  "physical_dataset_removal": "complete"
+  "physical_dataset_removal": "complete",
+  "release": "v0.2.0",
+  "release_commit": "b81e74782e6e22a120ac014ada42f1e3d8c6974b",
+  "published_app_sha256": "163251c91f41e5f399b0164040a9ec4f27eab0b8ed125a1d85a760e751429426",
+  "published_app_bytes": 36965746,
+  "validation": {
+    "markdown_documents": 18,
+    "local_links_checked": 48,
+    "broken_local_links": 0,
+    "heading_and_fence_checks": "passed",
+    "build_flags": "verified against scripts/build_release.py"
+  },
+  "code_tests": "not rerun for documentation-only changes",
+  "excluded": [
+    "vendor licenses",
+    "dataset source documentation",
+    "historical notebooks"
+  ],
+  "site_checks": "physical IP camera, second LAN client, long-duration uptime, Windows logon, site accuracy pending"
 }

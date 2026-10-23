@@ -78,6 +78,8 @@ retention. `cctv_app.py` reads runtime artifacts; browsers do not own camera wor
 Use `uv run python cctv.py --check` and `--probe` for installation checks. Private
 camera URLs are environment references in ignored `config/*.local.yaml`. Never
 publish camera credentials, recordings, PKI keys, or local gateway configuration.
-Build app releases with `uv run python -m scripts.build_release`; include the
+Follow [release building](docs/RELEASE_BUILD.md): the builder requires a selected
+SHWD checkpoint and the pinned Caddy ZIP. Build with
+`uv run python -m scripts.build_release`; include the
 selected model, dependency notices, and SHA256 checksums. Keep actual-camera
 qualification separate from software installation and public-dataset metrics.

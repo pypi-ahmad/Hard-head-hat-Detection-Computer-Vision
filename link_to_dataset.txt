@@ -1,1 +1,5 @@
-http://e.pc.cd/22PotalK
+Supported default: Safety Helmet Wearing Dataset (SHWD)
+https://github.com/njvisionpower/Safety-Helmet-Wearing-Dataset
+Download and convert with: uv run data_setup.py
+Preparation, exclusions, and provenance: docs/DATASET_PREPARATION.md
+Camera review and holdout limitations: docs/DATASET_REVIEW.md

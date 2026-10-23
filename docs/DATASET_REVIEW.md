@@ -23,5 +23,8 @@ byte-for-byte from the unchanged original. The manifest now records original and
 prepared image hashes separately. Preparation repairs JPEG end markers before
 hashing, preventing training from silently invalidating these records.
 
+Frame approval covers the stored image annotations only. It does not approve
+video event intervals or establish independence between recording sites.
+
 Camera test accuracy, event recall, false alerts per hour, and alert delay remain
 unmeasured while fine-tuning runs and event intervals await recorded review.

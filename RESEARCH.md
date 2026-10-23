@@ -4,6 +4,10 @@ The chosen baseline is SHWD with `helmet` and `bare_head` classes. The original
 `person` label represents a bare head. YOLO26 offers n, s, m, l, and x scales;
 the current local SHWD checkpoint uses Small.
 
+This records the design basis for the SHWD overhaul, not a continuing claim that
+YOLO26 is the latest available model. The shipped v0.2.0 app uses the selected SHWD
+Small checkpoint; no camera-adapted checkpoint has been promoted.
+
 Relevant primary sources:
 
 - [SHWD repository](https://github.com/njvisionpower/Safety-Helmet-Wearing-Dataset)

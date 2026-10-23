@@ -1,4 +1,4 @@
-# SHWD overhaul
+# SHWD overhaul: implemented design
 
 The application defaults to SHWD helmet/bare-head detection. The historical PPE
 workflow is explicitly experimental. The implementation adds per-stream ByteTrack,
@@ -8,6 +8,12 @@ and human annotation review.
 Review drafts must not become training ground truth automatically. Related sources
 must share a split. Fine-tuning compares candidates against the existing checkpoint
 on frozen camera holdouts before publishing a replacement.
+
+Windows CCTV distribution is implemented in v0.2.0: continuous workers, a separate
+read-only dashboard, and authenticated HTTPS LAN access. Follow the
+[installation guide](CCTV_INSTALL.md) for operation. Camera fine-tuning and reviewed
+event evaluation remain separate qualification work; implementation does not
+establish accuracy on a new site.
 
 Primary references used for the design:
 

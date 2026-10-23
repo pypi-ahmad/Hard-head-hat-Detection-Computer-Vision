@@ -16,6 +16,9 @@ The prepared set has 7,564 images: 5,441 train, 606 validation, and 1,517 test.
 One image with unexpected classes is excluded completely; 16 lower-priority exact
 cross-split duplicates are excluded. Original data stays intact. Download and
 conversion manifests record source hashes, label hashes, exclusions, and clipping.
+JPEG end markers are repaired before prepared-image hashing. Original image hashes
+are retained separately as `source_sha256`; `sha256` identifies the prepared image.
+Never replace provenance records simply to bypass an integrity failure.
 
 For supplied camera videos, run `uv run review_data.py extract`. Review the draft
 annotations in the app before exporting a version. Assign related sources to one
